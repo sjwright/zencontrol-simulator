@@ -20,6 +20,7 @@ async def test_zencontrol_python_discovery_and_control():
     world = load_world(CONFIG)
     world.bind_host = "127.0.0.1"
     world.bind_port = 0
+    world.heartbeat_interval = 0
 
     sim = Simulator(world)
     await sim.start()

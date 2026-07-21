@@ -12,6 +12,8 @@ return `ERROR_UNKNOWN_CMD`.
 ## Behaviour
 
 - Listens for TPI Advanced commands on **UDP port 5108** (configurable)
+- Emits an `IS_OCCUPIED` (0x06) multicast heartbeat every **5 seconds** (configurable
+  via `heartbeat_interval`; `0` disables)
 - Answers discovery/query commands from a YAML world model
 - Control commands **mutate in-memory state** (levels, colour, scenes, profile,
   system variables) and emit matching TPI events on multicast

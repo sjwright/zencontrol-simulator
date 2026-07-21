@@ -11,6 +11,8 @@ controller:
   startup_complete: true
   dali_ready: true
   event_mode: 0x01  # enabled + multicast
+  heartbeat_interval: 5  # IS_OCCUPIED (0x06) multicast keepalive; 0 disables
+  # heartbeat_ecd / heartbeat_instance default to the first occupancy sensor
 
 lights:
   - address: 0

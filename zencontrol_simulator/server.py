@@ -53,6 +53,7 @@ class Simulator:
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._protocol: Optional[SimulatorProtocol] = None
         self._stop: Optional[asyncio.Event] = None
+        self._heartbeat_task: Optional[asyncio.Task[None]] = None
 
     async def start(self) -> None:
         loop = asyncio.get_running_loop()
@@ -71,8 +72,33 @@ class Simulator:
             len(self.world.groups),
             len(self.world.devices),
         )
+        if self.world.heartbeat_interval > 0:
+            target = self.world.heartbeat_target()
+            if target is None:
+                logger.warning(
+                    "Heartbeat interval %.1fs set but no occupancy sensor configured",
+                    self.world.heartbeat_interval,
+                )
+            else:
+                logger.info(
+                    "Heartbeat: IS_OCCUPIED ECD %s.%s every %.1fs",
+                    target[0],
+                    target[1],
+                    self.world.heartbeat_interval,
+                )
+                self._heartbeat_task = asyncio.create_task(
+                    self._heartbeat_loop(),
+                    name="zencontrol-heartbeat",
+                )
 
     async def stop(self) -> None:
+        if self._heartbeat_task is not None:
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            self._heartbeat_task = None
         if self._transport is not None:
             self._transport.close()
             self._transport = None
@@ -83,6 +109,12 @@ class Simulator:
             self.dispatcher.error_count,
             self.events.sent_count,
         )
+
+    async def _heartbeat_loop(self) -> None:
+        interval = self.world.heartbeat_interval
+        while True:
+            await asyncio.sleep(interval)
+            self.events.occupancy_heartbeat()
 
     async def run_forever(self, *, interactive: bool = False) -> None:
         await self.start()

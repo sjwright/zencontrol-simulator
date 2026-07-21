@@ -75,6 +75,7 @@ async def live_protocol():
     world = load_world(CONFIG)
     world.bind_host = "127.0.0.1"
     world.bind_port = 0
+    world.heartbeat_interval = 0  # keep live tests free of background events
 
     sim = Simulator(world)
     await sim.start()

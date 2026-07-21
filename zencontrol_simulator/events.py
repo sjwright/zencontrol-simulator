@@ -201,6 +201,20 @@ class EventEmitter:
             instance=instance,
         )
 
+    def occupancy_heartbeat(self) -> bool:
+        """Emit IS_OCCUPIED (0x06) as a keepalive without updating motion timers."""
+        target = self.world.heartbeat_target()
+        if target is None:
+            logger.debug("Heartbeat skipped — no occupancy sensor in world")
+            return False
+        ecd, instance = target
+        return self.emit(
+            64 + ecd,
+            EventCode.IS_OCCUPIED,
+            bytes([instance & 0xFF, 0x01]),
+            instance=instance,
+        )
+
     def _require_instance(
         self,
         ecd: int,

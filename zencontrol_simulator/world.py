@@ -374,6 +374,10 @@ class World:
     unicast_ip: Optional[str] = None
     unicast_port: int = 0
     event_filters: list[EventFilter] = field(default_factory=list)
+    # Emit IS_OCCUPIED (0x06) multicast keepalive; 0 disables.
+    heartbeat_interval: float = 5.0
+    heartbeat_ecd: Optional[int] = None
+    heartbeat_instance: Optional[int] = None
 
     def light(self, address: int) -> Optional[Light]:
         return self.lights.get(address)
@@ -392,6 +396,23 @@ class World:
             if inst.number == number:
                 return inst
         return None
+
+    def first_occupancy(self) -> Optional[tuple[int, int]]:
+        """Return (ecd, instance) for the first occupancy sensor, if any."""
+        for ecd in sorted(self.devices):
+            for inst in self.devices[ecd].instances:
+                if inst.type == 0x03:
+                    return (ecd, inst.number)
+        return None
+
+    def heartbeat_target(self) -> Optional[tuple[int, int]]:
+        """Resolve configured or first occupancy sensor for the heartbeat."""
+        if self.heartbeat_ecd is not None and self.heartbeat_instance is not None:
+            inst = self.instance(self.heartbeat_ecd, self.heartbeat_instance)
+            if inst is not None and inst.type == 0x03:
+                return (self.heartbeat_ecd, self.heartbeat_instance)
+            return None
+        return self.first_occupancy()
 
     def lights_in_group(self, group_number: int) -> list[Light]:
         return [lt for lt in self.lights.values() if group_number in lt.groups]
@@ -874,6 +895,15 @@ def load_world(path: str | Path) -> World:
         last_scheduled_profile=int(profiles_section.get("last_scheduled", 0)),
         system_variables=sysvars,
         event_mode=_as_int(ctrl.get("event_mode"), 0x01),
+        heartbeat_interval=float(ctrl.get("heartbeat_interval", 5)),
+        heartbeat_ecd=(
+            int(ctrl["heartbeat_ecd"]) if ctrl.get("heartbeat_ecd") is not None else None
+        ),
+        heartbeat_instance=(
+            int(ctrl["heartbeat_instance"])
+            if ctrl.get("heartbeat_instance") is not None
+            else None
+        ),
     )
     _validate_world(world)
     return world

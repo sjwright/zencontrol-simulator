@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from pathlib import Path
 
@@ -228,6 +229,36 @@ def test_occupy_resets_last_detect():
     inst.timers.last_motion_at = time.time() - 99
     assert events.occupancy(0, 2, occupied=True) is True
     assert inst.timers.seconds_since_detect() <= 1
+
+
+def test_heartbeat_does_not_note_motion():
+    from zencontrol_simulator.events import EventEmitter
+
+    world = load_world(CONFIG)
+    events = EventEmitter(world)
+    assert world.heartbeat_target() == (0, 2)
+    inst = world.instance(0, 2)
+    assert inst is not None and inst.timers is not None
+    inst.timers.last_motion_at = time.time() - 99
+    assert events.occupancy_heartbeat() is True
+    assert inst.timers.seconds_since_detect() >= 90
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_loop_emits():
+    from zencontrol_simulator.server import Simulator
+
+    world = load_world(CONFIG)
+    world.bind_host = "127.0.0.1"
+    world.bind_port = 0
+    world.heartbeat_interval = 0.05
+    sim = Simulator(world)
+    await sim.start()
+    before = sim.events.sent_count
+    await asyncio.sleep(0.18)
+    after = sim.events.sent_count
+    await sim.stop()
+    assert after >= before + 2
 
 
 def test_occupancy_timer_query_advances(monkeypatch):
