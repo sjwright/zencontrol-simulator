@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+_protocol.txt
+.DS_Store
+
+# Vendor protocol PDF (not redistributed)
+Advanced_Third_Party_Interface_API_Document*.pdf

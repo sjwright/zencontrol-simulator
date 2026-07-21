@@ -1,0 +1,178 @@
+# World model for zencontrol-tpi / zencontrol-python testing.
+# Initial values load from this file; control commands mutate in-memory state
+# (and emit TPI events). State is not written back to disk.
+
+controller:
+  bind_host: "0.0.0.0"
+  bind_port: 5108
+  mac: "02:00:00:00:00:01"
+  label: "Simulator"
+  version: [2, 2, 11]
+  startup_complete: true
+  dali_ready: true
+  event_mode: 0x01  # enabled + multicast
+
+lights:
+  - address: 0
+    label: "Living Room Ceiling"
+    serial: 0x0100000000000001
+    level: 180
+    min_level: 1
+    max_level: 254
+    last_scene: 0
+    last_scene_current: true
+    # 6 = LED brightness, 8 = colour (required for tunable / RGB feature detection)
+    cg_types: [6, 8]
+    colour:
+      type: tc
+      kelvin: 3000
+    colour_features:
+      supports_xy: false
+      supports_tunable: true
+      primary_count: 0
+      rgbwaf_channels: 0
+    colour_temp_limits:
+      physical_warmest: 2700
+      physical_coolest: 6500
+      soft_warmest: 2700
+      soft_coolest: 6500
+      step_value: 1
+    groups: [0]
+    scene_levels: [180, 80, 0, null, null, null, null, null, null, null, null, null]
+    scene_colours:
+      - {type: tc, kelvin: 3000}
+      - {type: tc, kelvin: 2700}
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+    status: 0x04
+
+  - address: 1
+    label: "Kitchen Pendants"
+    serial: 0x0100000000000002
+    level: 0
+    min_level: 1
+    max_level: 254
+    last_scene: 2
+    last_scene_current: true
+    cg_types: [6]
+    colour: null
+    colour_features:
+      supports_xy: false
+      supports_tunable: false
+      primary_count: 0
+      rgbwaf_channels: 0
+    groups: [0, 1]
+    scene_levels: [200, 100, 0, null, null, null, null, null, null, null, null, null]
+    status: 0x00
+
+  - address: 2
+    label: "RGB Accent"
+    serial: 0x0100000000000003
+    level: 128
+    min_level: 1
+    max_level: 254
+    last_scene: 0
+    last_scene_current: false
+    cg_types: [8]
+    colour:
+      type: rgbwaf
+      r: 255
+      g: 64
+      b: 32
+      w: 0
+      a: 0
+      f: 0
+    colour_features:
+      supports_xy: false
+      supports_tunable: false
+      primary_count: 0
+      # zencontrol-python: 3=RGB, 4=RGBW, 5=RGBWW
+      rgbwaf_channels: 3
+    groups: [1]
+    scene_levels: [128, 64, 0, null, null, null, null, null, null, null, null, null]
+    scene_colours:
+      - {type: rgbwaf, r: 255, g: 64, b: 32, w: 0, a: 0, f: 0}
+      - {type: rgbwaf, r: 0, g: 0, b: 255, w: 0, a: 0, f: 0}
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+    status: 0x04
+
+groups:
+  - number: 0
+    label: "Living Areas"
+    level: 180
+    scenes:
+      0: "Bright"
+      1: "Relax"
+      2: "Off"
+
+  - number: 1
+    label: "Kitchen"
+    level: 0
+    scenes:
+      0: "Task"
+      1: "Dinner"
+      2: "Off"
+
+devices:
+  - address: 0
+    label: "Living Room Switch"
+    serial: 0x0200000000000001
+    instances:
+      - number: 0
+        type: push_button
+        label: "On/Off"
+      - number: 1
+        type: push_button
+        label: "Scene Bright"
+      - number: 2
+        type: occupancy_sensor
+        label: "Motion"
+        timers:
+          deadtime: 1
+          hold: 60
+          report: 20
+          last_detect: 12
+
+  - address: 1
+    label: "Kitchen Switch"
+    serial: 0x0200000000000002
+    instances:
+      - number: 0
+        type: push_button
+        label: "Kitchen Toggle"
+
+profiles:
+  current: 1
+  last_scheduled: 1
+  items:
+    - number: 1
+      label: "Day"
+    - number: 2
+      label: "Night"
+    - number: 3
+      label: "Away"
+
+system_variables:
+  - id: 0
+    name: "Demo Switch"
+    value: 0
+  - id: 1
+    name: "Demo Lux Sensor"
+    value: 420

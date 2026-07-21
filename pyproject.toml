@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=77.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zencontrol-simulator"
+version = "0.1.0"
+description = "UDP simulator for Zencontrol TPI Advanced controllers."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    {name = "Simon Wright"},
+]
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-asyncio>=0.18.0",
+]
+# Live protocol tests (tests/test_protocol_live.py) also need zencontrol-python:
+#   pip install -e ../zencontrol-python
+
+[project.scripts]
+zencontrol-simulator = "zencontrol_simulator.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["zencontrol_simulator*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
