@@ -1103,3 +1103,127 @@ def test_colour_membership_includes_high_scenes():
     assert resp[0] == ResponseType.ANSWER
     scenes = set(resp[3:-1])
     assert 0 in scenes and 1 in scenes and 8 in scenes and 9 in scenes
+
+
+def test_off_light_defaults_last_active_to_254():
+    """Kitchen Pendants start at level 0 without last_active_level in YAML."""
+    _, world, _ = _disp()
+    assert world.lights[1].level == 0
+    assert world.lights[1].last_active_level == 254
+
+    disp, world, _ = _disp()
+    req = parse_request(_basic(CMD["DALI_GO_TO_LAST_ACTIVE_LEVEL"], address=1))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.OK
+    assert world.lights[1].level == 254
+
+
+def test_mixed_group_level_event_uses_stored_prev(monkeypatch):
+    disp, world, events = _disp()
+    world.lights[0].set_level(10)
+    world.lights[1].set_level(20)
+    world.groups[0].level = 180
+    assert world.group_level(0) == 255
+
+    emitted = []
+    monkeypatch.setattr(
+        events, "emit", lambda t, c, p=b"", instance=None: emitted.append((t, int(c), p)) or True
+    )
+    req = parse_request(_basic(CMD["DALI_ARC_LEVEL"], address=64, d2=40))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.OK
+
+    group_events = [p for t, c, p in emitted if t == 64 and c == 0x0B]
+    assert group_events
+    assert group_events[0] == bytes([180, 40])  # stored prev, not (40, 40)
+
+
+def test_stop_fade_emits_level_change_v2(monkeypatch):
+    import time as time_mod
+
+    disp, world, events = _disp()
+    world.lights[1].set_level(0)
+    base = 1_700_000_000.0
+    monkeypatch.setattr(time_mod, "time", lambda: base)
+
+    req = parse_request(_basic(CMD["DALI_CUSTOM_FADE"], address=1, d0=100, d1=0, d2=10))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.OK
+
+    monkeypatch.setattr(time_mod, "time", lambda: base + 5)
+    emitted = []
+    monkeypatch.setattr(
+        events, "emit", lambda t, c, p=b"", instance=None: emitted.append((t, int(c), p)) or True
+    )
+    stop = parse_request(_basic(CMD["DALI_STOP_FADE"], address=1))
+    assert not isinstance(stop, ParseFailure)
+    assert disp.handle(stop)[0] == ResponseType.OK
+
+    level_events = [p for t, c, p in emitted if t == 1 and c == 0x0B]
+    assert level_events
+    frozen = world.lights[1].level
+    assert 45 <= frozen <= 55
+    assert level_events[0] == bytes([frozen, frozen])
+
+
+def test_query_min_max_and_fade_running(monkeypatch):
+    import time as time_mod
+
+    disp, world, _ = _disp()
+    world.lights[0].min_level = 5
+    world.lights[0].max_level = 200
+
+    qmin = parse_request(_basic(CMD["DALI_QUERY_MIN_LEVEL"], address=0))
+    assert not isinstance(qmin, ParseFailure)
+    assert disp.handle(qmin)[3] == 5
+
+    qmax = parse_request(_basic(CMD["DALI_QUERY_MAX_LEVEL"], address=0))
+    assert not isinstance(qmax, ParseFailure)
+    assert disp.handle(qmax)[3] == 200
+
+    qfade = parse_request(_basic(CMD["DALI_QUERY_FADE_RUNNING"], address=0))
+    assert not isinstance(qfade, ParseFailure)
+    assert disp.handle(qfade)[3] == 0
+
+    base = 1_700_000_000.0
+    monkeypatch.setattr(time_mod, "time", lambda: base)
+    fade = parse_request(_basic(CMD["DALI_CUSTOM_FADE"], address=0, d0=50, d1=0, d2=10))
+    assert not isinstance(fade, ParseFailure)
+    assert disp.handle(fade)[0] == ResponseType.OK
+    assert disp.handle(qfade)[3] == 1
+
+
+def test_heartbeat_defaults_to_five():
+    _, world, _ = _disp()
+    assert world.heartbeat_interval == 5
+
+
+def test_packaged_config_exists():
+    from zencontrol_simulator import __main__ as main_mod
+
+    packaged = Path(main_mod.__file__).resolve().parent / "config.yaml"
+    assert packaged.is_file()
+    assert main_mod.default_config_path().is_file()
+
+
+def test_broadcast_inhibit_ok_on_empty_world(tmp_path):
+    cfg = tmp_path / "empty.yaml"
+    cfg.write_text(
+        """
+controller:
+  mac: "02:00:00:00:00:01"
+  label: "Empty"
+  version: [2, 2, 11]
+lights: []
+groups: []
+devices: []
+profiles:
+  items: []
+system_variables: []
+"""
+    )
+    world = load_world(cfg)
+    disp = CommandDispatcher(world, EventEmitter(world))
+    req = parse_request(_basic(CMD["DALI_INHIBIT"], address=255, d1=0, d2=10))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.OK

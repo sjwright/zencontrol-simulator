@@ -76,6 +76,9 @@ CMD = {
     "DALI_QUERY_CG_TYPE": 0xAC,
     "DALI_QUERY_LAST_SCENE": 0xAD,
     "DALI_QUERY_LAST_SCENE_IS_CURRENT": 0xAE,
+    "DALI_QUERY_MIN_LEVEL": 0xAF,
+    "DALI_QUERY_MAX_LEVEL": 0xB0,
+    "DALI_QUERY_FADE_RUNNING": 0xB1,
     "DALI_ENABLE_DAPC_SEQ": 0xB2,
     "DALI_CUSTOM_FADE": 0xB4,
     "DALI_GO_TO_LAST_ACTIVE_LEVEL": 0xB5,
@@ -197,6 +200,9 @@ class CommandDispatcher:
         self._reg(CMD["DALI_QUERY_CONTROL_GEAR_STATUS"], self._query_cg_status)
         self._reg(CMD["DALI_QUERY_LAST_SCENE"], self._query_last_scene)
         self._reg(CMD["DALI_QUERY_LAST_SCENE_IS_CURRENT"], self._query_last_scene_current)
+        self._reg(CMD["DALI_QUERY_MIN_LEVEL"], self._query_min_level)
+        self._reg(CMD["DALI_QUERY_MAX_LEVEL"], self._query_max_level)
+        self._reg(CMD["DALI_QUERY_FADE_RUNNING"], self._query_fade_running)
         self._reg(CMD["QUERY_DALI_COLOUR"], self._query_colour)
         self._reg(CMD["QUERY_DALI_COLOUR_FEATURES"], self._query_colour_features)
         self._reg(CMD["QUERY_DALI_COLOUR_TEMP_LIMITS"], self._query_colour_temp_limits)
@@ -513,6 +519,26 @@ class CommandDispatcher:
             return _answer(request.seq, bytes([1 if group.last_scene_current else 0]))
         return _no_answer(request.seq)
 
+    def _query_min_level(self, request: Request) -> bytes:
+        light = self.world.light(self._addr(request))
+        if light is None:
+            return _no_answer(request.seq)
+        return _answer(request.seq, bytes([light.min_level & 0xFF]))
+
+    def _query_max_level(self, request: Request) -> bytes:
+        light = self.world.light(self._addr(request))
+        if light is None:
+            return _no_answer(request.seq)
+        return _answer(request.seq, bytes([light.max_level & 0xFF]))
+
+    def _query_fade_running(self, request: Request) -> bytes:
+        light = self.world.light(self._addr(request))
+        if light is None:
+            return _no_answer(request.seq)
+        light.refresh_status()
+        running = 1 if (light.status & 0x10) else 0
+        return _answer(request.seq, bytes([running]))
+
     def _query_colour(self, request: Request) -> bytes:
         light = self.world.light(self._addr(request))
         if light is None or light.colour is None:
@@ -639,7 +665,8 @@ class CommandDispatcher:
         err = self._check_level_target(request.seq, wire)
         if err is not None:
             return err
-        self.world.clear_fade(wire)
+        for target, previous, new in self.world.clear_fade(wire):
+            self.events.level_change(target, previous, new)
         return _ok(request.seq)
 
     def _inhibit(self, request: Request) -> bytes:
@@ -648,8 +675,7 @@ class CommandDispatcher:
         if err is not None:
             return err
         seconds = (self._data(request, 2) << 8) | self._data(request, 3)
-        if not self.world.apply_inhibit(wire, seconds):
-            return self._unknown_target(request.seq)
+        self.world.apply_inhibit(wire, seconds)
         return _ok(request.seq)
 
     def _go_last_active(self, request: Request) -> bytes:

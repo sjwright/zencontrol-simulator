@@ -125,13 +125,24 @@ class EventEmitter:
             prev_levels = {a: lt.visible_level() for a, lt in self.world.lights.items()}
             for group in self.world.groups.values():
                 gl = self.world.group_level(group.number)
-                prev_levels[64 + group.number] = gl if gl is not None else group.level
+                if gl is None or gl == 255:
+                    prev_levels[64 + group.number] = group.level
+                else:
+                    prev_levels[64 + group.number] = gl
         elif wire <= 63:
             light = self.world.light(wire)
             if light:
                 prev_levels[wire] = light.visible_level()
         elif 64 <= wire <= 79:
-            prev_levels[wire] = self.world.group_level(wire - 64) or 0
+            group = self.world.group(wire - 64)
+            gl = self.world.group_level(wire - 64)
+            if gl is None:
+                prev_levels[wire] = group.level if group else 0
+            elif gl == 255 and group is not None:
+                # Mixed is not a valid event current — use last stored group level
+                prev_levels[wire] = group.level
+            else:
+                prev_levels[wire] = gl
             for light in self.world.lights_in_group(wire - 64):
                 prev_levels[light.address] = light.visible_level()
 
@@ -154,7 +165,7 @@ class EventEmitter:
                 level = self.world.group_level(target - 64)
                 if level is not None and level != 255:
                     prev = prev_levels.get(target, level)
-                    self.level_change(target, prev if prev != 255 else level, level)
+                    self.level_change(target, prev, level)
                 members = self.world.lights_in_group(target - 64)
                 scene_has_colour = any(
                     0 <= scene < len(m.scene_colours) and m.scene_colours[scene] is not None

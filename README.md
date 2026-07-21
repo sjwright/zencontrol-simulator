@@ -12,8 +12,9 @@ return `ERROR_UNKNOWN_CMD`.
 ## Behaviour
 
 - Listens for TPI Advanced commands on **UDP port 5108** (configurable)
-- Emits an `IS_OCCUPIED` (0x06) multicast heartbeat every **5 seconds** (configurable
-  via `heartbeat_interval`; `0` disables)
+- Emits an `IS_OCCUPIED` (0x06) multicast heartbeat every **5 seconds** by default
+  (`heartbeat_interval`; `0` disables). Useful for discovery; zencontrol-python
+  treats each pulse as motion, so occupancy stay held while it runs
 - Answers discovery/query commands from a YAML world model
 - Control commands **mutate in-memory state** (levels, colour, scenes, profile,
   system variables) and emit matching TPI events on multicast
@@ -25,7 +26,8 @@ return `ERROR_UNKNOWN_CMD`.
 - ECG level/colour changes clear parent groups’ `last_scene_current`
 - `DALI_CUSTOM_FADE` interpolates for `QUERY_LEVEL` while `fade_running` is set;
   `LEVEL_CHANGE_V2` still carries the destination; `DALI_STOP_FADE` freezes at the
-  mid-fade level
+  mid-fade level and emits `LEVEL_CHANGE_V2` with the frozen level
+- `DALI_QUERY_MIN_LEVEL` / `MAX_LEVEL` / `FADE_RUNNING` are implemented
 - `DALI_INHIBIT` stores a timed inhibit flag on targets (no sensor→load automation)
 - System variable SET only updates IDs present in YAML (no auto-create)
 - Occupancy `last_detect` is computed from a wall-clock last-motion timestamp

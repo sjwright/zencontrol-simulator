@@ -80,8 +80,10 @@ class Simulator:
                     self.world.heartbeat_interval,
                 )
             else:
-                logger.info(
-                    "Heartbeat: IS_OCCUPIED ECD %s.%s every %.1fs",
+                logger.warning(
+                    "Heartbeat: IS_OCCUPIED ECD %s.%s every %.1fs "
+                    "(discovery keepalive; zencontrol-python occupancy hold "
+                    "will not clear while this runs — set heartbeat_interval: 0 to disable)",
                     target[0],
                     target[1],
                     self.world.heartbeat_interval,

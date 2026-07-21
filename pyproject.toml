@@ -31,6 +31,9 @@ zencontrol-simulator = "zencontrol_simulator.__main__:main"
 where = ["."]
 include = ["zencontrol_simulator*"]
 
+[tool.setuptools.package-data]
+zencontrol_simulator = ["config.yaml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

@@ -374,7 +374,7 @@ class World:
     unicast_ip: Optional[str] = None
     unicast_port: int = 0
     event_filters: list[EventFilter] = field(default_factory=list)
-    # Emit IS_OCCUPIED (0x06) multicast keepalive; 0 disables.
+    # Emit IS_OCCUPIED (0x06) multicast keepalive for discovery; 0 disables.
     heartbeat_interval: float = 5.0
     heartbeat_ecd: Optional[int] = None
     heartbeat_instance: Optional[int] = None
@@ -493,9 +493,10 @@ class World:
             group = self.groups.get(group_num)
             if group is None:
                 return []
+            stored_prev = group.level
             prev_g = self.group_level(group_num)
             if prev_g is None:
-                prev_g = group.level
+                prev_g = stored_prev
             group.set_level(level)
             members = self.lights_in_group(group_num)
             for light in members:
@@ -503,7 +504,9 @@ class World:
                 light.set_level(level, fading_seconds=fading_seconds, fade_origin=wire)
                 changes.append((light.address, prev, light.level))
             self.invalidate_groups_sharing(members, except_group=group_num)
-            changes.append((wire, prev_g if prev_g != 255 else group.level, group.level))
+            # Mixed (255) is not a valid LEVEL_CHANGE_V2 current — use last stored group level
+            event_prev = stored_prev if prev_g == 255 else prev_g
+            changes.append((wire, event_prev, group.level))
             return changes
         return []
 
@@ -548,9 +551,10 @@ class World:
             group = self.groups.get(group_num)
             if group is None:
                 return []
+            stored_prev = group.level
             prev_g = self.group_level(group_num)
             if prev_g is None:
-                prev_g = group.level
+                prev_g = stored_prev
             members = self.lights_in_group(group_num)
             for light in members:
                 prev = light.visible_level()
@@ -563,7 +567,8 @@ class World:
             gl = self.group_level(group_num)
             if gl is not None and gl != 255:
                 group.level = gl
-                changes.append((wire, prev_g if prev_g != 255 else gl, gl))
+                event_prev = stored_prev if prev_g == 255 else prev_g
+                changes.append((wire, event_prev, gl))
             return changes
         return []
 
@@ -631,22 +636,50 @@ class World:
             return targets
         return []
 
-    def clear_fade(self, wire: int) -> None:
-        """Stop fades that were started on this same wire target (DALI semantics)."""
+    def clear_fade(self, wire: int) -> list[tuple[int, int, int]]:
+        """Stop fades started on this wire; return (target, prev_visible, frozen) for events."""
+        changes: list[tuple[int, int, int]] = []
+
+        def _freeze(light: Light, origin: int) -> None:
+            if light.fade_origin != origin or light.fading_until is None:
+                return
+            prev = light.visible_level(expire=False)
+            light.clear_fade(freeze=True)
+            changes.append((light.address, prev, light.level))
+
         if wire == 255:
             for light in self.lights.values():
-                if light.fade_origin == 255:
-                    light.clear_fade(freeze=True)
-            return
+                _freeze(light, 255)
+            for group in self.groups.values():
+                gl = self.group_level(group.number)
+                if gl is not None and gl != 255 and gl != group.level:
+                    prev = group.level
+                    group.level = gl
+                    changes.append((64 + group.number, prev, gl))
+            return changes
         if wire <= 63:
             light = self.lights.get(wire)
-            if light is not None and light.fade_origin == wire:
-                light.clear_fade(freeze=True)
-            return
+            if light is not None:
+                before = len(changes)
+                _freeze(light, wire)
+                if len(changes) > before:
+                    self.invalidate_parent_groups(light)
+            return changes
         if 64 <= wire <= 79:
-            for light in self.lights_in_group(wire - 64):
-                if light.fade_origin == wire:
-                    light.clear_fade(freeze=True)
+            group_num = wire - 64
+            group = self.groups.get(group_num)
+            stored_prev = group.level if group is not None else 0
+            for light in self.lights_in_group(group_num):
+                _freeze(light, wire)
+            if group is not None and changes:
+                gl = self.group_level(group_num)
+                if gl is not None and gl != 255:
+                    group.level = gl
+                    changes.append((wire, stored_prev, gl))
+                else:
+                    group.last_scene_current = False
+            return changes
+        return changes
 
     def apply_scene(self, wire: int, scene: int) -> list[int]:
         """Apply scene; return wire targets for SCENE_CHANGE events."""
@@ -696,6 +729,14 @@ def _as_int(value: Any, default: int = 0) -> int:
     if isinstance(value, str):
         return int(value, 0)
     return int(value)
+
+
+def _default_last_active(item: dict[str, Any]) -> int:
+    """Default last_active_level: current level if on, else 254 (not min_level)."""
+    if item.get("last_active_level") is not None:
+        return _as_int(item.get("last_active_level"))
+    level = _as_int(item.get("level"))
+    return level if level > 0 else 254
 
 
 def _parse_colour(raw: Any) -> Optional[Colour]:
@@ -755,10 +796,7 @@ def load_world(path: str | Path) -> World:
             level=_as_int(item.get("level")),
             min_level=_as_int(item.get("min_level"), 1),
             max_level=_as_int(item.get("max_level"), 254),
-            last_active_level=_as_int(
-                item.get("last_active_level"),
-                max(_as_int(item.get("level")), 1) or 254,
-            ),
+            last_active_level=_default_last_active(item),
             last_scene=_as_int(item.get("last_scene")),
             last_scene_current=bool(item.get("last_scene_current", False)),
             cg_types=[int(x) for x in (item.get("cg_types") or [])],
@@ -775,7 +813,7 @@ def load_world(path: str | Path) -> World:
             scene_colours=_parse_scene_colours(item.get("scene_colours")),
             status=_as_int(item.get("status")),
         )
-        # Keep last_active sensible when starting on
+        # Keep last_active aligned when starting on; never leave 0
         lt = lights[addr]
         if lt.level > 0:
             lt.last_active_level = lt.level

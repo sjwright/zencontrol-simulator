@@ -13,10 +13,14 @@ from .world import load_world
 
 
 def default_config_path() -> Path:
-    """Prefer cwd config.yaml, else the sample next to the package."""
+    """Prefer cwd config.yaml, else the packaged sample."""
     cwd = Path.cwd() / "config.yaml"
     if cwd.is_file():
         return cwd
+    packaged = Path(__file__).resolve().parent / "config.yaml"
+    if packaged.is_file():
+        return packaged
+    # Editable checkout: repo-root sample next to the package
     return Path(__file__).resolve().parents[1] / "config.yaml"
 
 
