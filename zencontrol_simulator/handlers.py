@@ -89,7 +89,10 @@ CMD = {
 }
 
 MAX_SCENE = 12
-# PDF QUERY_SCENE_LEVELS_BY_ADDRESS returns all 16 DALI scene slots; unused = 0xFF.
+# Zencontrol has 12 scenes (0–11). Do not confuse with the 16-byte answer from
+# QUERY_SCENE_LEVELS_BY_ADDRESS: that is the DALI gear scene table (slots 0–15);
+# slots 12–15 are unused padding (0xFF), not extra Zencontrol scenes. Colour
+# scene opcodes only cover 0–7 and 8–11; dali_scene / group labels use 0–11.
 SCENE_LEVEL_SLOTS = 16
 
 
@@ -564,7 +567,8 @@ class CommandDispatcher:
         light = self.world.light(self._addr(request))
         if light is None:
             return _no_answer(request.seq)
-        # PDF: all 16 DALI scene slots; 0xFF means not part of that scene.
+        # Zencontrol scenes are 0–11. PDF returns 16 DALI gear slots (0–15);
+        # fill 0–11 from world state and leave 12–15 as 0xFF (unused).
         out = bytearray([0xFF] * SCENE_LEVEL_SLOTS)
         for i, level in enumerate(light.scene_levels[:MAX_SCENE]):
             if level is not None:

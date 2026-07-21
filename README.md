@@ -126,8 +126,9 @@ Deliberate choices vs the full PDF:
   but that collides with ECD address 63
 - **Level events:** emit `LEVEL_CHANGE_V2` only (legacy `LEVEL_CHANGE` /
   `GROUP_LEVEL_CHANGE` companions omitted; library treats them as deprecated)
-- **Scenes modelled:** 0–11 (as in zencontrol-python); scene-*level* queries
-  still return the PDF’s full **16** slots with trailing `0xFF`
+- **Scenes:** Zencontrol has **12 scenes (0–11)**. `QUERY_SCENE_LEVELS_BY_ADDRESS`
+  returns 16 bytes because that is the DALI gear table (slots 0–15); slots
+  12–15 are unused `0xFF` padding, not extra Zencontrol scenes
 - **Colour-scene unused slots:** type `0xFF` + six `0xFF` bytes per PDF
 - **Filters / DAPC:** reply types follow the PDF (`OK` / `NO_ANSWER`);
   zencontrol-python treats `OK` as success for `return_type='bool'`
