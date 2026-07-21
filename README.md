@@ -105,4 +105,4 @@ start the simulator on an ephemeral port and drive it through
 
 ## Protocol reference
 
-Zencontrol’s TPI Advanced PDF (local copy only; not in this repo).
+Zencontrol’s TPI Advanced PDF, version published 20-11-2025.
