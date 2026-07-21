@@ -86,6 +86,8 @@ CMD = {
 }
 
 MAX_SCENE = 12
+# PDF QUERY_SCENE_LEVELS_BY_ADDRESS returns all 16 DALI scene slots; unused = 0xFF.
+SCENE_LEVEL_SLOTS = 16
 
 
 def _ok(seq: int) -> bytes:
@@ -217,7 +219,7 @@ class CommandDispatcher:
         self._reg(CMD["DALI_GO_TO_LAST_ACTIVE_LEVEL"], self._go_last_active)
         self._reg(CMD["DALI_STOP_FADE"], self._stop_fade)
         self._reg(CMD["DALI_INHIBIT"], self._inhibit)
-        self._reg(CMD["DALI_ENABLE_DAPC_SEQ"], lambda r: _answer(r.seq, b"\x01"))
+        self._reg(CMD["DALI_ENABLE_DAPC_SEQ"], lambda r: _no_answer(r.seq))
         self._reg(CMD["DALI_SCENE"], self._scene)
         self._reg(CMD["DALI_COLOUR"], self._dali_colour)
 
@@ -305,31 +307,40 @@ class CommandDispatcher:
         return _answer(request.seq, payload)
 
     def _add_filter(self, request: Request) -> bytes:
+        # PDF: successful add replies OK (empty).
         addr = self._addr(request)
         inst = self._data(request, 1, 0xFF)
         mask = (self._data(request, 2) << 8) | self._data(request, 3)
         for filt in self.world.event_filters:
             if filt.address == addr and filt.instance == inst:
                 filt.mask |= mask
-                return _answer(request.seq, b"\x01")
+                return _ok(request.seq)
         self.world.event_filters.append(EventFilter(address=addr, instance=inst, mask=mask))
-        return _answer(request.seq, b"\x01")
+        return _ok(request.seq)
 
     def _clear_filters(self, request: Request) -> bytes:
+        # PDF: OK when a matching filter is cleared; NO_ANSWER if none matched.
         addr = self._addr(request)
         inst = self._data(request, 1, 0xFF)
         unmask = (self._data(request, 2) << 8) | self._data(request, 3)
         remaining = []
+        changed = False
         for filt in self.world.event_filters:
             if filt.address in (addr, 0xFF) or addr == 0xFF:
                 if filt.instance in (inst, 0xFF) or inst == 0xFF:
-                    filt.mask &= ~unmask & 0xFFFF
-                    if filt.mask:
-                        remaining.append(filt)
+                    new_mask = filt.mask & ~unmask & 0xFFFF
+                    if new_mask != filt.mask:
+                        changed = True
+                    if new_mask:
+                        remaining.append(EventFilter(
+                            address=filt.address, instance=filt.instance, mask=new_mask
+                        ))
                     continue
             remaining.append(filt)
         self.world.event_filters = remaining
-        return _answer(request.seq, b"\x01")
+        if not changed:
+            return _no_answer(request.seq)
+        return _ok(request.seq)
 
     def _query_filters(self, request: Request) -> bytes:
         start = self._data(request, 1, 0)
@@ -457,6 +468,21 @@ class CommandDispatcher:
             ):
                 status |= 0x10
             return _answer(request.seq, bytes([status]))
+        if wire == 255:
+            # PDF: broadcast status supported; OR member status bits.
+            if not self.world.lights:
+                return _no_answer(request.seq)
+            status = 0
+            any_on = False
+            for light in self.world.lights.values():
+                status |= light.refresh_status()
+                if light.visible_level() > 0:
+                    any_on = True
+            if any_on:
+                status |= 0x04
+            else:
+                status &= ~0x04
+            return _answer(request.seq, bytes([status & 0xFF]))
         return _no_answer(request.seq)
 
     def _query_last_scene(self, request: Request) -> bytes:
@@ -512,7 +538,8 @@ class CommandDispatcher:
         light = self.world.light(self._addr(request))
         if light is None:
             return _no_answer(request.seq)
-        out = bytearray([0xFF] * MAX_SCENE)
+        # PDF: all 16 DALI scene slots; 0xFF means not part of that scene.
+        out = bytearray([0xFF] * SCENE_LEVEL_SLOTS)
         for i, level in enumerate(light.scene_levels[:MAX_SCENE]):
             if level is not None:
                 out[i] = level & 0xFF
@@ -535,7 +562,8 @@ class CommandDispatcher:
         for i in range(start, end):
             colour = light.scene_colours[i] if i < len(light.scene_colours) else None
             if colour is None:
-                out.extend(bytes(7))
+                # PDF: unused scene = type 0xFF + six 0xFF data bytes
+                out.extend(bytes([0xFF] * 7))
             else:
                 out.extend(colour.to_scene_blob())
         return _answer(request.seq, bytes(out))

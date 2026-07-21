@@ -486,7 +486,7 @@ def test_event_filter_add_query_clear_roundtrip():
     mask = 1 << 0x0B  # mute LEVEL_CHANGE_V2
     add = parse_request(_basic(CMD["DALI_ADD_TPI_EVENT_FILTER"], address=0, d0=0xFF, d1=(mask >> 8), d2=(mask & 0xFF)))
     assert not isinstance(add, ParseFailure)
-    assert disp.handle(add)[0] == ResponseType.ANSWER
+    assert disp.handle(add)[0] == ResponseType.OK
 
     q = parse_request(_basic(CMD["QUERY_DALI_TPI_EVENT_FILTERS"], address=0xFF, d0=0, d1=0, d2=0xFF))
     assert not isinstance(q, ParseFailure)
@@ -501,12 +501,19 @@ def test_event_filter_add_query_clear_roundtrip():
         _basic(CMD["DALI_CLEAR_TPI_EVENT_FILTERS"], address=0, d0=0xFF, d1=(mask >> 8), d2=(mask & 0xFF))
     )
     assert not isinstance(clear, ParseFailure)
-    assert disp.handle(clear)[0] == ResponseType.ANSWER
+    assert disp.handle(clear)[0] == ResponseType.OK
     assert world.event_filters == []
 
     empty = parse_request(_basic(CMD["QUERY_DALI_TPI_EVENT_FILTERS"], address=0xFF, d0=0, d1=0, d2=0xFF))
     assert not isinstance(empty, ParseFailure)
     assert disp.handle(empty)[0] == ResponseType.NO_ANSWER
+
+    # PDF: clearing a non-existent filter → NO_ANSWER
+    clear_again = parse_request(
+        _basic(CMD["DALI_CLEAR_TPI_EVENT_FILTERS"], address=0, d0=0xFF, d1=(mask >> 8), d2=(mask & 0xFF))
+    )
+    assert not isinstance(clear_again, ParseFailure)
+    assert disp.handle(clear_again)[0] == ResponseType.NO_ANSWER
 
 
 def test_group_colour_clears_scene_current():
@@ -591,6 +598,11 @@ def test_group_go_last_active_is_per_member():
 
 
 def test_wire_127_is_not_broadcast():
+    """PDF allows broadcast 127 or 255, but 127 collides with ECD 63.
+
+    Advanced clients (zencontrol-python) use 255 only; simulator keeps that
+    convention so ECD address 63 remains addressable.
+    """
     disp, _, _ = _disp()
     req = parse_request(_basic(CMD["DALI_ARC_LEVEL"], address=127, d2=10))
     assert not isinstance(req, ParseFailure)
@@ -783,3 +795,311 @@ def test_mixed_recall_max_omits_group_level_event(monkeypatch):
     assert world.group_level(0) == 255
     group_levels = [p for t, c, p in emitted if t == 64 and c == 0x0B]
     assert group_levels == []
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: inhibit expiry, fade complete, readiness, inject, etc.
+# ---------------------------------------------------------------------------
+
+
+def test_inhibit_expires_with_wall_clock(monkeypatch):
+    import time as time_mod
+
+    disp, world, _ = _disp()
+    base = 1_700_000_000.0
+    monkeypatch.setattr(time_mod, "time", lambda: base)
+    req = parse_request(_basic(CMD["DALI_INHIBIT"], address=1, d1=0, d2=5))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.OK
+    assert world.lights[1].is_inhibited() is True
+
+    monkeypatch.setattr(time_mod, "time", lambda: base + 6)
+    assert world.lights[1].is_inhibited() is False
+
+
+def test_group_and_broadcast_inhibit():
+    disp, world, _ = _disp()
+    req = parse_request(_basic(CMD["DALI_INHIBIT"], address=64, d1=0, d2=30))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.OK
+    assert world.groups[0].is_inhibited() is True
+    assert world.lights[0].is_inhibited() is True
+    assert world.lights[1].is_inhibited() is True
+
+    clear = parse_request(_basic(CMD["DALI_INHIBIT"], address=255, d1=0, d2=0))
+    assert not isinstance(clear, ParseFailure)
+    assert disp.handle(clear)[0] == ResponseType.OK
+    assert world.groups[0].is_inhibited() is False
+    assert all(not lt.is_inhibited() for lt in world.lights.values())
+
+
+def test_fade_auto_completes_without_stop(monkeypatch):
+    import time as time_mod
+
+    disp, world, _ = _disp()
+    world.lights[1].set_level(0)
+    base = 1_700_000_000.0
+    monkeypatch.setattr(time_mod, "time", lambda: base)
+    req = parse_request(_basic(CMD["DALI_CUSTOM_FADE"], address=1, d0=90, d1=0, d2=4))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.OK
+    assert world.lights[1].status & 0x10
+
+    monkeypatch.setattr(time_mod, "time", lambda: base + 5)
+    q = parse_request(_basic(CMD["DALI_QUERY_LEVEL"], address=1))
+    assert not isinstance(q, ParseFailure)
+    assert disp.handle(q)[3] == 90
+    assert not (world.lights[1].status & 0x10)
+    status = parse_request(_basic(CMD["DALI_QUERY_CONTROL_GEAR_STATUS"], address=1))
+    assert not isinstance(status, ParseFailure)
+    assert not (disp.handle(status)[3] & 0x10)
+
+
+def test_group_mid_fade_query_level(monkeypatch):
+    import time as time_mod
+
+    disp, world, _ = _disp()
+    world.lights[0].set_level(0)
+    world.lights[1].set_level(0)
+    base = 1_700_000_000.0
+    monkeypatch.setattr(time_mod, "time", lambda: base)
+    req = parse_request(_basic(CMD["DALI_CUSTOM_FADE"], address=64, d0=100, d1=0, d2=10))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.OK
+
+    monkeypatch.setattr(time_mod, "time", lambda: base + 5)
+    q = parse_request(_basic(CMD["DALI_QUERY_LEVEL"], address=64))
+    assert not isinstance(q, ParseFailure)
+    mid = disp.handle(q)[3]
+    assert 45 <= mid <= 55
+
+
+def test_empty_colour_scene_membership_no_answer():
+    disp, _, _ = _disp()
+    # Dimmer ECG 1 has no scene colours
+    req = parse_request(_basic(CMD["QUERY_COLOUR_SCENE_MEMBERSHIP_BY_ADDR"], address=1))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
+
+
+def test_query_unknown_ecg_no_answer():
+    disp, _, _ = _disp()
+    for cmd in (
+        CMD["DALI_QUERY_LEVEL"],
+        CMD["QUERY_DALI_DEVICE_LABEL"],
+        CMD["QUERY_DALI_COLOUR"],
+        CMD["DALI_QUERY_CONTROL_GEAR_STATUS"],
+    ):
+        req = parse_request(_basic(cmd, address=50))
+        assert not isinstance(req, ParseFailure)
+        assert disp.handle(req)[0] == ResponseType.NO_ANSWER
+
+
+def test_query_unknown_group_no_answer():
+    disp, _, _ = _disp()
+    req = parse_request(_basic(CMD["QUERY_GROUP_LABEL"], address=15))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
+
+
+def test_colour_scene_8_11_data():
+    disp, _, _ = _disp()
+    req = parse_request(_basic(CMD["QUERY_COLOUR_SCENE_8_11_DATA_FOR_ADDR"], address=0))
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ANSWER
+    assert resp[2] == 28
+    blob = resp[3:-1]
+    assert blob[0] == 0x20
+    assert (blob[1] << 8) | blob[2] == 4500
+    assert blob[7] == 0x20
+    assert (blob[8] << 8) | blob[9] == 5500
+
+
+def test_instance_and_ecd_labels():
+    disp, _, _ = _disp()
+    req = parse_request(_basic(CMD["QUERY_DALI_INSTANCE_LABEL"], address=64, d2=2))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[3:-1] == b"Motion"
+
+    req2 = parse_request(_basic(CMD["QUERY_DALI_DEVICE_LABEL"], address=65))
+    assert not isinstance(req2, ParseFailure)
+    assert disp.handle(req2)[3:-1] == b"Kitchen Switch"
+
+    missing = parse_request(_basic(CMD["QUERY_DALI_INSTANCE_LABEL"], address=64, d2=9))
+    assert not isinstance(missing, ParseFailure)
+    assert disp.handle(missing)[0] == ResponseType.NO_ANSWER
+
+
+def test_xy_colour_set_and_query():
+    disp, world, _ = _disp()
+    colour = bytes([0x10, 0x4E, 0x20, 0x55, 0xF0])  # x=20000, y=22000
+    packet = bytearray([0x04, 1, CMD["DALI_COLOUR"], 3, 128])
+    packet.extend(colour)
+    packet.append(checksum(packet))
+    req = parse_request(bytes(packet))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.OK
+    assert world.lights[3].colour.x == 20000
+    assert world.lights[3].level == 128
+
+    q = parse_request(_basic(CMD["QUERY_DALI_COLOUR"], address=3))
+    assert not isinstance(q, ParseFailure)
+    resp = disp.handle(q)
+    assert resp[3] == 0x10
+    assert (resp[4] << 8) | resp[5] == 20000
+
+
+def test_startup_dali_ready_false_no_answer():
+    disp, world, _ = _disp()
+    world.startup_complete = False
+    assert disp.handle(parse_request(_basic(CMD["QUERY_CONTROLLER_STARTUP_COMPLETE"])))[0] == ResponseType.NO_ANSWER
+    world.startup_complete = True
+    world.dali_ready = False
+    assert disp.handle(parse_request(_basic(CMD["QUERY_IS_DALI_READY"])))[0] == ResponseType.NO_ANSWER
+
+
+def test_inject_level_scene_colour_profile(monkeypatch):
+    from zencontrol_simulator.server import Simulator
+    from zencontrol_simulator.world import Colour
+
+    world = load_world(CONFIG)
+    sim = Simulator(world)
+    emitted = []
+    monkeypatch.setattr(
+        sim.events, "emit", lambda t, c, p=b"", instance=None: emitted.append((t, int(c), p)) or True
+    )
+
+    sim.inject_level(1, 66)
+    assert world.lights[1].level == 66
+    assert any(t == 1 and c == 0x0B for t, c, _ in emitted)
+
+    sim.inject_scene(0, 1)
+    assert world.lights[0].last_scene == 1
+    assert any(t == 0 and c == 0x05 for t, c, _ in emitted)
+
+    sim.inject_colour(3, Colour(type="xy", x=1000, y=2000))
+    assert world.lights[3].colour.x == 1000
+    assert any(t == 3 and c == 0x08 for t, c, _ in emitted)
+
+    sim.inject_profile(2)
+    assert world.current_profile == 2
+    assert any(c == 0x09 for _, c, _ in emitted)
+
+
+def test_config_validation_warnings(tmp_path, caplog):
+    import logging
+
+    cfg = tmp_path / "bad.yaml"
+    cfg.write_text(
+        """
+controller:
+  mac: "02:00:00:00:00:01"
+  label: "X"
+  version: [2, 2, 11]
+groups: []
+lights:
+  - address: 0
+    label: "Bad TW"
+    cg_types: [6]
+    colour_features:
+      supports_tunable: true
+  - address: 1
+    label: "Bad RGB"
+    cg_types: [6]
+    colour_features:
+      rgbwaf_channels: 9
+  - address: 2
+    label: "Missing group"
+    groups: [7]
+devices: []
+profiles:
+  current: 99
+  items: []
+system_variables:
+  - id: 0
+    name: "A"
+    value: 0
+  - id: 20
+    name: "Far"
+    value: 1
+"""
+    )
+    with caplog.at_level(logging.WARNING):
+        load_world(cfg)
+    text = " ".join(r.message for r in caplog.records)
+    assert "supports_tunable" in text
+    assert "rgbwaf_channels" in text
+    assert "missing group" in text.lower() or "references missing group" in text
+    assert "current profile" in text.lower() or "not in profiles" in text
+    assert "gap" in text.lower() or "System variable gap" in text
+
+
+def test_server_replies_error_on_bad_checksum():
+    """UDP path returns ERROR for ParseFailure (checksum)."""
+    import asyncio
+    import socket
+
+    from zencontrol_simulator.server import Simulator
+
+    async def _run():
+        world = load_world(CONFIG)
+        world.bind_host = "127.0.0.1"
+        world.bind_port = 0
+        world.heartbeat_interval = 0
+        sim = Simulator(world)
+        await sim.start()
+        port = sim._transport.get_extra_info("sockname")[1]
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(1.0)
+        loop = asyncio.get_running_loop()
+        try:
+            packet = bytearray(_basic(CMD["QUERY_CONTROLLER_LABEL"]))
+            packet[-1] ^= 0xFF
+            sock.sendto(bytes(packet), ("127.0.0.1", port))
+            # Yield so the asyncio UDP server can handle the datagram and reply
+            await asyncio.sleep(0.05)
+            data, _ = await loop.run_in_executor(None, sock.recvfrom, 256)
+            assert data[0] == ResponseType.ERROR
+            assert data[3] == ErrorCode.CHECKSUM
+        finally:
+            sock.close()
+            await sim.stop()
+
+    asyncio.run(_run())
+
+
+def test_group_status_aggregates_fade(monkeypatch):
+    import time as time_mod
+
+    disp, world, _ = _disp()
+    world.lights[0].set_level(0)
+    base = 1_700_000_000.0
+    monkeypatch.setattr(time_mod, "time", lambda: base)
+    req = parse_request(_basic(CMD["DALI_CUSTOM_FADE"], address=0, d0=100, d1=0, d2=10))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.OK
+
+    q = parse_request(_basic(CMD["DALI_QUERY_CONTROL_GEAR_STATUS"], address=64))
+    assert not isinstance(q, ParseFailure)
+    assert disp.handle(q)[3] & 0x10
+
+
+def test_scene_levels_include_high_scenes():
+    disp, _, _ = _disp()
+    req = parse_request(_basic(CMD["QUERY_SCENE_LEVELS_BY_ADDRESS"], address=0))
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    levels = list(resp[3:-1])
+    assert levels[8] == 160
+    assert levels[9] == 40
+
+
+def test_colour_membership_includes_high_scenes():
+    disp, _, _ = _disp()
+    req = parse_request(_basic(CMD["QUERY_COLOUR_SCENE_MEMBERSHIP_BY_ADDR"], address=0))
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ANSWER
+    scenes = set(resp[3:-1])
+    assert 0 in scenes and 1 in scenes and 8 in scenes and 9 in scenes

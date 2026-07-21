@@ -83,7 +83,8 @@ packet testing. Occupancy timer queries return **seconds since last motion**
 
 [`config.yaml`](config.yaml) includes:
 
-- Tunable-white light (ECG 0), dimmer (ECG 1), RGB light (ECG 2)
+- Tunable-white light (ECG 0), dimmer (ECG 1), RGB light (ECG 2), XY spotlight (ECG 3)
+- Colour scenes 0–1 and 8–9 on the tunable-white light
 - Two groups with labelled scenes
 - Two ECDs: buttons + one occupancy sensor
 - Three profiles and two system variables (`Demo Switch`, `Demo Lux Sensor`
@@ -108,3 +109,23 @@ start the simulator on an ephemeral port and drive it through
 ## Protocol reference
 
 Zencontrol’s TPI Advanced PDF, version published 20-11-2025.
+
+### PDF alignment notes
+
+Implemented opcodes, framing, checksum, response types, multicast, event
+codes/modes, and addressing match the PDF and zencontrol-python.
+
+Deliberate choices vs the full PDF:
+
+- **Scope:** only opcodes used by zencontrol-python’s interface layer
+  (DMX, virtual instances, SDDP, deprecated scene queries, etc. return
+  `ERROR_UNKNOWN_CMD`)
+- **Broadcast:** advanced wire value **255** only — PDF also allows **127**,
+  but that collides with ECD address 63
+- **Level events:** emit `LEVEL_CHANGE_V2` only (legacy `LEVEL_CHANGE` /
+  `GROUP_LEVEL_CHANGE` companions omitted; library treats them as deprecated)
+- **Scenes modelled:** 0–11 (as in zencontrol-python); scene-*level* queries
+  still return the PDF’s full **16** slots with trailing `0xFF`
+- **Colour-scene unused slots:** type `0xFF` + six `0xFF` bytes per PDF
+- **Filters / DAPC:** reply types follow the PDF (`OK` / `NO_ANSWER`);
+  zencontrol-python treats `OK` as success for `return_type='bool'`

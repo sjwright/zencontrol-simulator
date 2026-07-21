@@ -40,7 +40,7 @@ lights:
       soft_coolest: 6500
       step_value: 1
     groups: [0]
-    scene_levels: [180, 80, 0, null, null, null, null, null, null, null, null, null]
+    scene_levels: [180, 80, 0, null, null, null, null, null, 160, 40, null, null]
     scene_colours:
       - {type: tc, kelvin: 3000}
       - {type: tc, kelvin: 2700}
@@ -50,8 +50,8 @@ lights:
       - null
       - null
       - null
-      - null
-      - null
+      - {type: tc, kelvin: 4500}
+      - {type: tc, kelvin: 5500}
       - null
       - null
     status: 0x04
@@ -103,6 +103,41 @@ lights:
     scene_colours:
       - {type: rgbwaf, r: 255, g: 64, b: 32, w: 0, a: 0, f: 0}
       - {type: rgbwaf, r: 0, g: 0, b: 255, w: 0, a: 0, f: 0}
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+    status: 0x04
+
+  - address: 3
+    label: "XY Spotlight"
+    serial: 0x0100000000000004
+    level: 100
+    min_level: 1
+    max_level: 254
+    last_scene: 0
+    last_scene_current: false
+    cg_types: [6, 8]
+    colour:
+      type: xy
+      x: 20000
+      y: 22000
+    colour_features:
+      supports_xy: true
+      supports_tunable: false
+      primary_count: 0
+      rgbwaf_channels: 0
+    groups: []
+    scene_levels: [100, 50, 0, null, null, null, null, null, null, null, null, null]
+    scene_colours:
+      - {type: xy, x: 20000, y: 22000}
+      - {type: xy, x: 15000, y: 18000}
       - null
       - null
       - null

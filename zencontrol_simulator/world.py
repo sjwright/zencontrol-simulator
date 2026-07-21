@@ -77,11 +77,11 @@ class Colour:
         return b""
 
     def to_scene_blob(self) -> bytes:
-        """Pad/truncate to 7 bytes for colour scene queries."""
+        """Pad/truncate to 7 bytes for colour scene queries (PDF: unused bytes 0xFF)."""
         raw = self.to_bytes()
         if len(raw) >= 7:
             return raw[:7]
-        return raw + bytes(7 - len(raw))
+        return raw + bytes([0xFF] * (7 - len(raw)))
 
 
 @dataclass

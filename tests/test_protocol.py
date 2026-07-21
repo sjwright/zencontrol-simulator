@@ -168,13 +168,16 @@ def test_enable_events_echo(dispatcher):
     assert world.event_mode == 0x41
 
 
-def test_scene_levels_twelve_bytes(dispatcher):
+def test_scene_levels_sixteen_bytes(dispatcher):
     disp, _, _ = dispatcher
     req = parse_request(_basic(CMD["QUERY_SCENE_LEVELS_BY_ADDRESS"], address=0))
     assert req is not None and not isinstance(req, ParseFailure)
     resp = disp.handle(req)
     assert resp[0] == ResponseType.ANSWER
-    assert resp[2] == 12
+    assert resp[2] == 16  # PDF: all 16 DALI scene slots
+    levels = list(resp[3:-1])
+    assert levels[0] == 180
+    assert levels[12] == 0xFF  # unused high scenes
 
 
 def test_instances_and_buttons(dispatcher):
@@ -218,3 +221,100 @@ def test_colour_scene_blob_length(dispatcher):
     resp = disp.handle(req)
     assert resp[0] == ResponseType.ANSWER
     assert resp[2] == 56  # 8 × 7
+
+
+def test_colour_scene_8_11_blob_length(dispatcher):
+    disp, _, _ = dispatcher
+    req = parse_request(_basic(CMD["QUERY_COLOUR_SCENE_8_11_DATA_FOR_ADDR"], address=0))
+    assert req is not None and not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ANSWER
+    assert resp[2] == 28  # 4 × 7
+    blob = resp[3:-1]
+    # Scene 8 = TC 4500K (0x20, 0x11, 0x94)
+    assert blob[0] == 0x20
+    assert (blob[1] << 8) | blob[2] == 4500
+
+
+def test_instance_label_query(dispatcher):
+    disp, _, _ = dispatcher
+    req = parse_request(_basic(CMD["QUERY_DALI_INSTANCE_LABEL"], address=64, d2=0))
+    assert req is not None and not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ANSWER
+    assert resp[3:-1] == b"On/Off"
+
+
+def test_ecd_device_label_query(dispatcher):
+    disp, _, _ = dispatcher
+    req = parse_request(_basic(CMD["QUERY_DALI_DEVICE_LABEL"], address=64))
+    assert req is not None and not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ANSWER
+    assert resp[3:-1] == b"Living Room Switch"
+
+
+def test_xy_colour_roundtrip(dispatcher):
+    disp, world, _ = dispatcher
+    # XY 0x10, x=12345, y=23456
+    colour = bytes([0x10, 0x30, 0x39, 0x5B, 0xA0])
+    packet = bytearray([0x04, 1, CMD["DALI_COLOUR"], 3, 0xFF])
+    packet.extend(colour)
+    packet.append(checksum(packet))
+    req = parse_request(bytes(packet))
+    assert req is not None and not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.OK
+    assert world.lights[3].colour is not None
+    assert world.lights[3].colour.type == "xy"
+    assert world.lights[3].colour.x == 12345
+    assert world.lights[3].colour.y == 23456
+
+    q = parse_request(_basic(CMD["QUERY_DALI_COLOUR"], address=3))
+    assert not isinstance(q, ParseFailure)
+    resp = disp.handle(q)
+    assert resp[0] == ResponseType.ANSWER
+    assert resp[3] == 0x10
+    assert (resp[4] << 8) | resp[5] == 12345
+
+
+def test_startup_and_dali_ready_no_answer(dispatcher):
+    disp, world, _ = dispatcher
+    world.startup_complete = False
+    req = parse_request(_basic(CMD["QUERY_CONTROLLER_STARTUP_COMPLETE"]))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
+
+    world.startup_complete = True
+    world.dali_ready = False
+    req2 = parse_request(_basic(CMD["QUERY_IS_DALI_READY"]))
+    assert not isinstance(req2, ParseFailure)
+    assert disp.handle(req2)[0] == ResponseType.NO_ANSWER
+
+
+def test_xy_features_bit(dispatcher):
+    _, world, _ = dispatcher
+    assert world.lights[3].colour_features.supports_xy
+    assert world.lights[3].colour_features.to_byte() & 0x01
+
+
+def test_colour_scene_blob_uses_ff_padding(dispatcher):
+    disp, _, _ = dispatcher
+    req = parse_request(_basic(CMD["QUERY_COLOUR_SCENE_0_7_DATA_FOR_ADDR"], address=0))
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    blob = resp[3:-1]
+    # Scene 0 TC 3000 — unused bytes must be 0xFF per PDF
+    assert blob[0] == 0x20
+    assert blob[3:7] == bytes([0xFF] * 4)
+    # Scene 2 unused — type 0xFF + six 0xFF
+    assert blob[14:21] == bytes([0xFF] * 7)
+
+
+def test_broadcast_status_query(dispatcher):
+    disp, world, _ = dispatcher
+    world.lights[1].set_level(50)
+    req = parse_request(_basic(CMD["DALI_QUERY_CONTROL_GEAR_STATUS"], address=255))
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ANSWER
+    assert resp[3] & 0x04  # lamp_power_on from at least one member

@@ -46,7 +46,7 @@ async def test_discover_control_gear(live_protocol):
     p, c = live_protocol.protocol, live_protocol.controller
     gears = await p.query_control_gear_dali_addresses(c)
     numbers = sorted(a.number for a in gears)
-    assert numbers == [0, 1, 2]
+    assert numbers == [0, 1, 2, 3]
 
 
 @pytest.mark.asyncio
@@ -332,7 +332,8 @@ async def test_custom_fade_and_stop(live_protocol):
 @pytest.mark.asyncio
 async def test_dapc_sequence(live_protocol):
     p = live_protocol.protocol
-    assert await p.dali_enable_dapc_sequence(live_protocol.ecg(1)) is True
+    # PDF: DAPC replies NO_ANSWER (legacy); library maps that to None.
+    assert await p.dali_enable_dapc_sequence(live_protocol.ecg(1)) is None
 
 
 # ---------------------------------------------------------------------------
@@ -494,3 +495,241 @@ async def test_group_level_event_via_protocol(live_protocol):
     assert await p.dali_arc_level(live_protocol.group(0), 44) is True
     await _wait(0.3)
     assert any(n == 0 and level == 44 for n, level in group_events)
+
+
+# ---------------------------------------------------------------------------
+# Labels, XY colour, scenes 8–11, broadcast, group queries, inject
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_instance_and_ecd_labels_live(live_protocol):
+    p = live_protocol.protocol
+    assert await p.query_dali_device_label(live_protocol.ecd(0)) == "Living Room Switch"
+    assert await p.query_dali_device_label(live_protocol.ecd(1)) == "Kitchen Switch"
+    assert await p.query_dali_instance_label(live_protocol.instance(0, 0)) == "On/Off"
+    assert await p.query_dali_instance_label(live_protocol.instance(0, 2, type_code=3)) == "Motion"
+    assert await p.query_dali_instance_label(live_protocol.instance(1, 0)) == "Kitchen Toggle"
+
+
+@pytest.mark.asyncio
+async def test_colour_xy_set_and_query(live_protocol):
+    p = live_protocol.protocol
+    addr = live_protocol.ecg(3)
+    features = await p.query_dali_colour_features(addr)
+    assert features is not None
+    assert features.get("supports_xy") is True
+
+    colour = ZenColour(type=ZenColourType.XY, x=12345, y=23456)
+    assert await p.dali_colour(addr, colour, level=90) is True
+    queried = await p.query_dali_colour(addr)
+    assert queried is not None
+    assert queried.type == ZenColourType.XY
+    assert queried.x == 12345 and queried.y == 23456
+    assert await p.dali_query_level(addr) == 90
+    assert live_protocol.world.lights[3].colour.x == 12345
+
+
+@pytest.mark.asyncio
+async def test_colour_scenes_include_8_11(live_protocol):
+    p = live_protocol.protocol
+    addr = live_protocol.ecg(0)
+    membership = await p.query_colour_scene_membership_by_address(addr)
+    assert 8 in membership and 9 in membership
+
+    colours = await p.query_scene_colours_by_address(addr)
+    assert len(colours) >= 10
+    assert colours[8] is not None and colours[8].kelvin == 4500
+    assert colours[9] is not None and colours[9].kelvin == 5500
+
+    levels = await p.query_scene_levels_by_address(addr)
+    assert levels[8] == 160
+    assert levels[9] == 40
+
+    assert await p.dali_scene(addr, 8) is True
+    assert await p.dali_query_level(addr) == 160
+    queried = await p.query_dali_colour(addr)
+    assert queried is not None and queried.kelvin == 4500
+
+
+@pytest.mark.asyncio
+async def test_broadcast_arc_off_and_scene(live_protocol):
+    p = live_protocol.protocol
+    bcast = live_protocol.broadcast()
+    assert await p.dali_arc_level(bcast, 33) is True
+    assert all(lt.level == 33 for lt in live_protocol.world.lights.values())
+
+    assert await p.dali_off(bcast) is True
+    assert all(lt.level == 0 for lt in live_protocol.world.lights.values())
+
+    assert await p.dali_scene(bcast, 0) is True
+    assert live_protocol.world.lights[0].level == 180
+    assert live_protocol.world.groups[0].last_scene == 0
+
+
+@pytest.mark.asyncio
+async def test_broadcast_colour_tc(live_protocol):
+    p = live_protocol.protocol
+    tc = ZenColour(type=ZenColourType.TC, kelvin=4200)
+    assert await p.dali_colour(live_protocol.broadcast(), tc) is True
+    assert live_protocol.world.lights[0].colour.kelvin == 4200
+    assert live_protocol.world.lights[3].colour.type == "tc"
+    assert live_protocol.world.lights[3].colour.kelvin == 4200
+
+
+@pytest.mark.asyncio
+async def test_group_last_scene_and_status(live_protocol):
+    p = live_protocol.protocol
+    g0 = live_protocol.group(0)
+    assert await p.dali_scene(g0, 1) is True
+    assert await p.dali_query_last_scene(g0) == 1
+    assert await p.dali_query_last_scene_is_current(g0) is True
+
+    await p.dali_arc_level(live_protocol.ecg(0), 10)
+    assert await p.dali_query_last_scene_is_current(g0) is False
+
+    await p.dali_arc_level(live_protocol.ecg(1), 0)
+    assert await p.dali_custom_fade(live_protocol.ecg(1), 80, 5) is True
+    p.cache.clear()
+    status = await p.dali_query_control_gear_status(g0)
+    assert status is not None
+    assert status["fade_running"] is True
+
+
+@pytest.mark.asyncio
+async def test_readiness_no_answer_when_not_ready(live_protocol):
+    p, c = live_protocol.protocol, live_protocol.controller
+    live_protocol.world.startup_complete = False
+    assert await p.query_controller_startup_complete(c) is not True
+    live_protocol.world.startup_complete = True
+    live_protocol.world.dali_ready = False
+    assert await p.query_is_dali_ready(c) is not True
+    live_protocol.world.dali_ready = True
+    assert await p.query_is_dali_ready(c) is True
+
+
+@pytest.mark.asyncio
+async def test_empty_colour_membership_dimmer(live_protocol):
+    p = live_protocol.protocol
+    membership = await p.query_colour_scene_membership_by_address(live_protocol.ecg(1))
+    assert membership == [] or membership is None
+
+
+@pytest.mark.asyncio
+async def test_xy_identity_and_serial(live_protocol):
+    p = live_protocol.protocol
+    addr = live_protocol.ecg(3)
+    assert await p.query_dali_device_label(addr) == "XY Spotlight"
+    serial = await p.query_dali_serial(addr)
+    assert serial == 0x0100000000000004
+    groups = await p.query_group_membership_by_address(addr)
+    assert groups == [] or groups is None or list(groups) == []
+
+
+@pytest.mark.asyncio
+async def test_inject_level_scene_colour_profile_events(live_protocol):
+    from zencontrol_simulator.world import Colour
+
+    p = live_protocol.protocol
+    levels: list = []
+    scenes: list = []
+    colours: list = []
+    profiles: list = []
+
+    async def on_level(*, address, arc_level, payload):
+        levels.append((address.number, arc_level))
+
+    async def on_scene(*, address, scene, active, payload):
+        scenes.append((address.number, scene))
+
+    async def on_colour(*, address, colour, payload):
+        colours.append((address.number, colour))
+
+    async def on_profile(*, controller, profile, payload):
+        profiles.append(profile)
+
+    p.set_callbacks(
+        level_change_callback=on_level,
+        scene_change_callback=on_scene,
+        colour_change_callback=on_colour,
+        profile_change_callback=on_profile,
+    )
+    await p.start_event_monitoring()
+    await _wait(0.25)
+
+    live_protocol.sim.inject_level(1, 77)
+    live_protocol.sim.inject_scene(0, 1)
+    live_protocol.sim.inject_colour(3, Colour(type="xy", x=1111, y=2222))
+    live_protocol.sim.inject_profile(3)
+    await _wait(0.4)
+
+    assert any(n == 1 and lv == 77 for n, lv in levels)
+    assert any(n == 0 and s == 1 for n, s in scenes)
+    assert any(n == 3 and c is not None and c.x == 1111 for n, c in colours)
+    assert 3 in profiles
+
+
+@pytest.mark.asyncio
+async def test_group_inhibit_live(live_protocol):
+    p = live_protocol.protocol
+    g0 = live_protocol.group(0)
+    assert await p.dali_inhibit(g0, 15) is True
+    assert live_protocol.world.groups[0].is_inhibited() is True
+    assert live_protocol.world.lights[0].is_inhibited() is True
+    assert await p.dali_inhibit(g0, 0) is True
+    assert live_protocol.world.groups[0].is_inhibited() is False
+
+
+@pytest.mark.asyncio
+async def test_fade_auto_complete_live(live_protocol):
+    p = live_protocol.protocol
+    addr = live_protocol.ecg(1)
+    await p.dali_arc_level(addr, 0)
+    assert await p.dali_custom_fade(addr, 50, 1) is True
+    await _wait(1.2)
+    p.cache.clear()
+    status = await p.dali_query_control_gear_status(addr)
+    assert status is not None
+    assert status["fade_running"] is False
+    assert await p.dali_query_level(addr) == 50
+
+
+@pytest.mark.asyncio
+async def test_return_to_scheduled_profile(live_protocol):
+    p, c = live_protocol.protocol, live_protocol.controller
+    live_protocol.world.last_scheduled_profile = 1
+    assert await p.change_profile_number(c, 3) is True
+    assert await p.return_to_scheduled_profile(c) is True
+    assert await p.query_current_profile_number(c) == 1
+
+
+@pytest.mark.asyncio
+async def test_sysvar_name_unknown_is_none(live_protocol):
+    p, c = live_protocol.protocol, live_protocol.controller
+    assert await p.query_system_variable_name(c, 99) is None
+    assert await p.query_system_variable(c, 99) is None
+
+
+@pytest.mark.asyncio
+async def test_member_events_on_group_scene(live_protocol):
+    p = live_protocol.protocol
+    scenes: list = []
+    levels: list = []
+
+    async def on_scene(*, address, scene, active, payload):
+        scenes.append((address.type.name, address.number, scene))
+
+    async def on_level(*, address, arc_level, payload):
+        levels.append((address.type.name, address.number, arc_level))
+
+    p.set_callbacks(scene_change_callback=on_scene, level_change_callback=on_level)
+    await p.start_event_monitoring()
+    await _wait(0.25)
+
+    assert await p.dali_scene(live_protocol.group(0), 1) is True
+    await _wait(0.35)
+    assert any(t == "GROUP" and n == 0 and s == 1 for t, n, s in scenes)
+    assert any(t == "ECG" and n == 0 and s == 1 for t, n, s in scenes)
+    assert any(t == "ECG" and n == 1 and s == 1 for t, n, s in scenes)
+    assert any(t == "ECG" and n == 0 and lv == 80 for t, n, lv in levels)
+    assert any(t == "ECG" and n == 1 and lv == 100 for t, n, lv in levels)
