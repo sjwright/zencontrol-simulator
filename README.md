@@ -143,7 +143,7 @@ Unregistered opcodes reply `ERROR_UNKNOWN_CMD` (`0x04`).
 
 ### Protocol features
 
-| Spec section                                      | Status     | Notes                                                       |
+| Specification                                     | Status     | Remarks                                                     |
 | ------------------------------------------------- | ---------- | ----------------------------------------------------------- |
 | Licenses                                          | No         | No feature gating is simulated                              |
 | UDP                                               | Correct    | UDP port `5108`                                             |
@@ -170,7 +170,7 @@ Status legend: **Simulated** = responds with some degree of correctness / simula
 **Stub** = static valid response; **N/A** = not implemented (deprecated in spec);
 **No** = not implemented.
 
-| Opcode | Command                                | Status     | Extent                                                    |
+| Code   | Command                                | Status     | Remarks                                                   |
 | ------ | -------------------------------------- | ---------- | --------------------------------------------------------- |
 | `0x01` | QUERY_GROUP_LABEL                      | Simulated  | Group 0–15; empty/missing → `NO_ANSWER`                   |
 | `0x03` | QUERY_DALI_DEVICE_LABEL                | Simulated  | ECG 0–63 / ECD 64–127; empty → `NO_ANSWER`                |
@@ -184,7 +184,7 @@ Status legend: **Simulated** = responds with some degree of correctness / simula
 | `0x0D` | QUERY_INSTANCES_BY_ADDRESS             | Partial    | Type/status; state always `0x00`; YAML instance types     |
 | `0x0E` | DALI_COLOUR                            | Simulated  | Colour frame; XY/Tc/RGBWAF; optional arc; group/broadcast |
 | `0x12` | QUERY_GROUP_BY_NUMBER                  | Partial    | Occupancy always `0x01`; level = max member visible       |
-| `0x14` | QUERY_SCENE_NUMBERS_BY_ADDRESS         | Simulated  | Scene indices with configured levels; none → `NO_ANSWER` |
+| `0x14` | QUERY_SCENE_NUMBERS_BY_ADDRESS         | Simulated  | Scene indices with configured levels; none → `NO_ANSWER`  |
 | `0x15` | QUERY_GROUP_MEMBERSHIP_BY_ADDRESS      | Simulated  | Membership bitmap                                         |
 | `0x16` | QUERY_DALI_ADDRESSES_WITH_INSTANCES    | Simulated  | ECD wires; paged from start                               |
 | `0x1A` | QUERY_SCENE_NUMBERS_FOR_GROUP          | Simulated  | Scene bitmask                                             |
@@ -261,7 +261,7 @@ are `**LEVEL_CHANGE_V2` only**; scene level queries return 16 DALI slots with
 
 #### Events
 
-| Code   | Event                         | Status     | Extent                                |
+| Code   | Event                         | Status     | Remarks                               |
 | ------ | ----------------------------- | ---------- | ------------------------------------- |
 | `0x00` | BUTTON_PRESS_EVENT            | Simulated  | Inject via `-i`; ECD wire `64+ecd`    |
 | `0x01` | BUTTON_HOLD_EVENT             | Simulated  | Inject via `-i`                       |

@@ -36,6 +36,65 @@ FADE_PROGRESS_INTERVAL_S = 0.5
 FADE_PROGRESS_MIN_MS = 2000
 # Signed BE16 range used by QUERY/SET_SYSTEM_VARIABLE.
 _SYSVAR_VALUE_MAX = 32767
+# Control-gear status bits (IEC 62386 / zencontrol status byte).
+_STATUS_LAMP_ON = 0x04
+_STATUS_FADE_RUNNING = 0x10
+
+
+def _set_inhibit_until(holder: Any, seconds: int) -> None:
+    if seconds <= 0:
+        holder.inhibited_until = None
+    else:
+        holder.inhibited_until = time.time() + seconds
+
+
+def _is_inhibited_until(holder: Any) -> bool:
+    until = holder.inhibited_until
+    if until is None:
+        return False
+    if time.time() >= until:
+        holder.inhibited_until = None
+        return False
+    return True
+
+
+def destination_level(light: "Light") -> int:
+    """Arc destination after a command (fade target while fading, else current)."""
+    return light.fade_to if light.fade_to is not None else light.level
+
+
+def scene_colour_bytes(light: "Light", scene: int) -> Optional[bytes]:
+    """COLOUR_CHANGE payload when this scene defines colour data on the light."""
+    if (
+        0 <= scene < len(light.scene_colours)
+        and light.scene_colours[scene] is not None
+        and light.colour is not None
+    ):
+        return light.colour.to_bytes()
+    return None
+
+
+@dataclass
+class SceneEffects:
+    """Companion TPI events implied by a scene recall.
+
+    ECG wires always get SCENE + LEVEL (+ COLOUR when the scene has colour).
+    Group wires get SCENE always; LEVEL/COLOUR only when members agree.
+    Parent groups of an ECG-only recall are never included (invalidate only).
+    """
+
+    scenes: list[int] = field(default_factory=list)
+    levels: list[tuple[int, int, int]] = field(default_factory=list)
+    colours: list[tuple[int, bytes]] = field(default_factory=list)
+
+    def add_ecg(self, light: "Light", scene: int, prev_level: int) -> None:
+        """Record SCENE/LEVEL/COLOUR for one control gear after it was mutated."""
+        wire = light.address
+        self.scenes.append(wire)
+        self.levels.append((wire, prev_level, destination_level(light)))
+        blob = scene_colour_bytes(light, scene)
+        if blob is not None:
+            self.colours.append((wire, blob))
 
 
 @dataclass
@@ -166,34 +225,32 @@ class Light:
     fade_origin: Optional[int] = None  # wire that started the custom fade
     inhibited_until: Optional[float] = None
 
-    def clear_fade(self, *, freeze: bool = False) -> None:
-        if freeze and self.fading_until is not None:
-            self.level = self.visible_level(expire=False)
-            if self.level > 0:
-                self.status |= 0x04
-            else:
-                self.status &= ~0x04
+    def _set_lamp_on(self, on: bool) -> None:
+        if on:
+            self.status |= _STATUS_LAMP_ON
+        else:
+            self.status &= ~_STATUS_LAMP_ON
+
+    def _clear_fade_fields(self) -> None:
         self.fading_until = None
         self.fade_from = None
         self.fade_to = None
         self.fade_started_at = None
         self.fade_origin = None
-        self.status &= ~0x10
+        self.status &= ~_STATUS_FADE_RUNNING
+
+    def clear_fade(self, *, freeze: bool = False) -> None:
+        if freeze and self.fading_until is not None:
+            self.level = self.visible_level(expire=False)
+            self._set_lamp_on(self.level > 0)
+        self._clear_fade_fields()
 
     def _expire_fade_if_due(self) -> None:
         if self.fading_until is not None and time.time() >= self.fading_until:
             if self.fade_to is not None:
                 self.level = self.fade_to
-            self.fading_until = None
-            self.fade_from = None
-            self.fade_to = None
-            self.fade_started_at = None
-            self.fade_origin = None
-            self.status &= ~0x10
-            if self.level > 0:
-                self.status |= 0x04
-            else:
-                self.status &= ~0x04
+            self._clear_fade_fields()
+            self._set_lamp_on(self.level > 0)
 
     def visible_level(self, *, expire: bool = True) -> int:
         """Level as seen on QUERY — interpolated while a custom fade is running."""
@@ -221,10 +278,7 @@ class Light:
             self.inhibited_until = None
         # lamp_power_on follows visible level while a fade is in progress
         if self.fading_until is not None:
-            if self.visible_level(expire=False) > 0:
-                self.status |= 0x04
-            else:
-                self.status &= ~0x04
+            self._set_lamp_on(self.visible_level(expire=False) > 0)
         return self.status & 0xFF
 
     def set_level(
@@ -247,36 +301,22 @@ class Light:
             self.fade_started_at = now
             self.fading_until = now + float(fading_seconds)
             self.fade_origin = fade_origin
-            self.status |= 0x10
+            self.status |= _STATUS_FADE_RUNNING
             # Keep lamp_power_on aligned with currently visible light during fade
-            if from_level > 0:
-                self.status |= 0x04
-            else:
-                self.status &= ~0x04
+            self._set_lamp_on(from_level > 0)
         else:
             self.clear_fade()
-            if level > 0:
-                self.status |= 0x04
-            else:
-                self.status &= ~0x04
+            self._set_lamp_on(level > 0)
 
     def set_colour(self, colour: Colour) -> None:
         self.colour = colour
         self.last_scene_current = False
 
     def set_inhibit(self, seconds: int) -> None:
-        if seconds <= 0:
-            self.inhibited_until = None
-        else:
-            self.inhibited_until = time.time() + seconds
+        _set_inhibit_until(self, seconds)
 
     def is_inhibited(self) -> bool:
-        if self.inhibited_until is None:
-            return False
-        if time.time() >= self.inhibited_until:
-            self.inhibited_until = None
-            return False
-        return True
+        return _is_inhibited_until(self)
 
     def apply_scene(
         self,
@@ -314,18 +354,10 @@ class Group:
         self.last_scene_current = False
 
     def set_inhibit(self, seconds: int) -> None:
-        if seconds <= 0:
-            self.inhibited_until = None
-        else:
-            self.inhibited_until = time.time() + seconds
+        _set_inhibit_until(self, seconds)
 
     def is_inhibited(self) -> bool:
-        if self.inhibited_until is None:
-            return False
-        if time.time() >= self.inhibited_until:
-            self.inhibited_until = None
-            return False
-        return True
+        return _is_inhibited_until(self)
 
 
 @dataclass
@@ -494,6 +526,32 @@ class World:
             return None
         return colours[0]
 
+    def agreed_group_level(self, group_number: int) -> Optional[int]:
+        """Member arc when unanimous; None if empty/missing/mixed (255)."""
+        level = self.group_level(group_number)
+        if level is None or level == 255:
+            return None
+        return level
+
+    def event_prev_for_group(self, group: Group) -> int:
+        """LEVEL_CHANGE_V2 current for a group wire (stored level when mixed)."""
+        level = self.group_level(group.number)
+        if level is None or level == 255:
+            return group.level
+        return level
+
+    def sync_group_level(
+        self, group: Group, *, clear_scene_if_mixed: bool = False
+    ) -> Optional[int]:
+        """Store agreed member level on the group; optionally clear scene-current if mixed."""
+        level = self.agreed_group_level(group.number)
+        if level is not None:
+            group.level = level
+            return level
+        if clear_scene_if_mixed:
+            group.last_scene_current = False
+        return None
+
     def invalidate_groups_sharing(
         self, lights: list[Light], *, except_group: Optional[int] = None
     ) -> None:
@@ -508,9 +566,7 @@ class World:
                 if group is None:
                     continue
                 group.last_scene_current = False
-                level = self.group_level(gnum)
-                if level is not None and level != 255:
-                    group.level = level
+                self.sync_group_level(group)
 
     def invalidate_parent_groups(self, light: Light) -> None:
         """ECG level/colour/scene changes clear parent group scene-current and sync level."""
@@ -519,7 +575,7 @@ class World:
     def apply_level(
         self, wire: int, level: int, *, fading_seconds: int = 0
     ) -> list[tuple[int, int, int]]:
-        """Apply level; return list of (wire_target, previous, new) for events."""
+        """Apply level; return list of (wire, previous, new) for events."""
         level = max(0, min(254, int(level)))
         changes: list[tuple[int, int, int]] = []
         if wire == 255:
@@ -546,10 +602,7 @@ class World:
             group = self.groups.get(group_num)
             if group is None:
                 return []
-            stored_prev = group.level
-            prev_g = self.group_level(group_num)
-            if prev_g is None:
-                prev_g = stored_prev
+            event_prev = self.event_prev_for_group(group)
             group.set_level(level)
             members = self.lights_in_group(group_num)
             for light in members:
@@ -557,8 +610,6 @@ class World:
                 light.set_level(level, fading_seconds=fading_seconds, fade_origin=wire)
                 changes.append((light.address, prev, light.level))
             self.invalidate_groups_sharing(members, except_group=group_num)
-            # Mixed (255) is not a valid LEVEL_CHANGE_V2 current — use last stored group level
-            event_prev = stored_prev if prev_g == 255 else prev_g
             changes.append((wire, event_prev, group.level))
             return changes
         return []
@@ -570,7 +621,7 @@ class World:
         *,
         fading_seconds: int = 0,
     ) -> list[tuple[int, int, int]]:
-        """Apply a per-light level choice (last-active / min / max) and emit targets."""
+        """Apply a per-light level choice; return (wire, previous, new) for events."""
         changes: list[tuple[int, int, int]] = []
         if wire == 255:
             for light in self.lights.values():
@@ -581,12 +632,10 @@ class World:
                 changes.append((light.address, prev, light.level))
             for group in self.groups.values():
                 prev = group.level
-                gl = self.group_level(group.number)
-                if gl is not None and gl != 255:
-                    group.set_level(gl)
-                    changes.append((64 + group.number, prev, group.level))
-                else:
-                    group.last_scene_current = False
+                group.last_scene_current = False
+                gl = self.sync_group_level(group)
+                if gl is not None:
+                    changes.append((64 + group.number, prev, gl))
             return changes
         if wire <= 63:
             light = self.lights.get(wire)
@@ -604,10 +653,7 @@ class World:
             group = self.groups.get(group_num)
             if group is None:
                 return []
-            stored_prev = group.level
-            prev_g = self.group_level(group_num)
-            if prev_g is None:
-                prev_g = stored_prev
+            event_prev = self.event_prev_for_group(group)
             members = self.lights_in_group(group_num)
             for light in members:
                 prev = light.visible_level()
@@ -617,10 +663,8 @@ class World:
                 changes.append((light.address, prev, light.level))
             group.last_scene_current = False
             self.invalidate_groups_sharing(members, except_group=group_num)
-            gl = self.group_level(group_num)
-            if gl is not None and gl != 255:
-                group.level = gl
-                event_prev = stored_prev if prev_g == 255 else prev_g
+            gl = self.sync_group_level(group)
+            if gl is not None:
                 changes.append((wire, event_prev, gl))
             return changes
         return []
@@ -704,10 +748,9 @@ class World:
             for light in self.lights.values():
                 _freeze(light, 255)
             for group in self.groups.values():
-                gl = self.group_level(group.number)
-                if gl is not None and gl != 255 and gl != group.level:
-                    prev = group.level
-                    group.level = gl
+                prev = group.level
+                gl = self.sync_group_level(group)
+                if gl is not None and gl != prev:
                     changes.append((64 + group.number, prev, gl))
             return changes
         if wire <= 63:
@@ -725,12 +768,9 @@ class World:
             for light in self.lights_in_group(group_num):
                 _freeze(light, wire)
             if group is not None and changes:
-                gl = self.group_level(group_num)
-                if gl is not None and gl != 255:
-                    group.level = gl
+                gl = self.sync_group_level(group, clear_scene_if_mixed=True)
+                if gl is not None:
                     changes.append((wire, stored_prev, gl))
-                else:
-                    group.last_scene_current = False
             return changes
         return changes
 
@@ -777,7 +817,7 @@ class World:
             if not pool:
                 return
             currents = {m.visible_level(expire=False) for m in pool}
-            dests = {(m.fade_to if m.fade_to is not None else m.level) for m in pool}
+            dests = {destination_level(m) for m in pool}
             if len(currents) != 1 or len(dests) != 1:
                 return
             current = next(iter(currents))
@@ -797,47 +837,71 @@ class World:
 
         return changes
 
-    def apply_scene(self, wire: int, scene: int, *, fading_seconds: float = 0) -> list[int]:
-        """Apply scene; return wire targets for SCENE_CHANGE events."""
-        targets: list[int] = []
+    def apply_scene(
+        self, wire: int, scene: int, *, fading_seconds: float = 0
+    ) -> SceneEffects:
+        """Apply scene; return SCENE/LEVEL/COLOUR event payloads to emit."""
+        effects = SceneEffects()
         origin = wire if fading_seconds > 0 else None
+
+        def _apply_ecg(light: Light) -> None:
+            prev = light.visible_level()
+            light.apply_scene(scene, fading_seconds=fading_seconds, fade_origin=origin)
+            effects.add_ecg(light, scene, prev)
+
+        def _begin_group_scene(group: Group) -> int:
+            event_prev = self.event_prev_for_group(group)
+            group.last_scene = scene
+            group.last_scene_current = True
+            return event_prev
+
+        def _group_companions(
+            group_num: int, event_prev: int, members: list[Light]
+        ) -> None:
+            group_wire = 64 + group_num
+            effects.scenes.append(group_wire)
+            dests = {destination_level(m) for m in members}
+            if len(dests) == 1:
+                effects.levels.append((group_wire, event_prev, next(iter(dests))))
+            if any(scene_colour_bytes(m, scene) is not None for m in members):
+                colour = self.agreed_member_colour(group_num)
+                if colour is not None:
+                    effects.colours.append((group_wire, colour.to_bytes()))
+
         if wire == 255:
             for light in self.lights.values():
-                light.apply_scene(scene, fading_seconds=fading_seconds, fade_origin=origin)
-                targets.append(light.address)
+                _apply_ecg(light)
             for group in self.groups.values():
-                group.last_scene = scene
-                group.last_scene_current = True
-                level = self.group_level(group.number)
-                if level is not None and level != 255:
-                    group.level = level
-                targets.append(64 + group.number)
-            return targets
+                members = self.lights_in_group(group.number)
+                event_prev = _begin_group_scene(group)
+                self.sync_group_level(group)
+                _group_companions(group.number, event_prev, members)
+            return effects
+
         if wire <= 63:
             light = self.lights.get(wire)
             if light is None:
-                return []
-            light.apply_scene(scene, fading_seconds=fading_seconds, fade_origin=origin)
+                return effects
+            _apply_ecg(light)
+            # Parent groups: sync stored level / clear scene-current, but do not emit
             self.invalidate_parent_groups(light)
-            return [wire]
+            return effects
+
         if 64 <= wire <= 79:
             group_num = wire - 64
             group = self.groups.get(group_num)
             if group is None:
-                return []
-            group.last_scene = scene
-            group.last_scene_current = True
+                return effects
+            event_prev = _begin_group_scene(group)
             members = self.lights_in_group(group_num)
             for light in members:
-                light.apply_scene(scene, fading_seconds=fading_seconds, fade_origin=origin)
-                targets.append(light.address)
+                _apply_ecg(light)
             self.invalidate_groups_sharing(members, except_group=group_num)
-            level = self.group_level(group_num)
-            if level is not None and level != 255:
-                group.level = level
-            targets.append(wire)
-            return targets
-        return []
+            self.sync_group_level(group)
+            _group_companions(group_num, event_prev, members)
+            return effects
+
+        return effects
 
 
 def _as_int(value: Any, default: int = 0) -> int:

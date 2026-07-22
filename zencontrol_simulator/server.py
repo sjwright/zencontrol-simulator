@@ -18,7 +18,13 @@ from .protocol import (
     extract_request_frame,
     parse_request,
 )
-from .world import SYSVAR_SIMULATE_INTERVAL, FADE_PROGRESS_INTERVAL_S, World, daylight_sine_value
+from .world import (
+    SYSVAR_SIMULATE_INTERVAL,
+    FADE_PROGRESS_INTERVAL_S,
+    Colour,
+    World,
+    daylight_sine_value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -155,27 +161,15 @@ class Simulator:
         )
 
     async def stop(self) -> None:
-        if self._fade_progress_task is not None:
-            self._fade_progress_task.cancel()
-            try:
-                await self._fade_progress_task
-            except asyncio.CancelledError:
-                pass
-            self._fade_progress_task = None
-        if self._sysvar_sim_task is not None:
-            self._sysvar_sim_task.cancel()
-            try:
-                await self._sysvar_sim_task
-            except asyncio.CancelledError:
-                pass
-            self._sysvar_sim_task = None
-        if self._heartbeat_task is not None:
-            self._heartbeat_task.cancel()
-            try:
-                await self._heartbeat_task
-            except asyncio.CancelledError:
-                pass
-            self._heartbeat_task = None
+        for attr in ("_fade_progress_task", "_sysvar_sim_task", "_heartbeat_task"):
+            task = getattr(self, attr)
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                setattr(self, attr, None)
         if self._tcp_server is not None:
             self._tcp_server.close()
             await self._tcp_server.wait_closed()
@@ -273,11 +267,9 @@ class Simulator:
 
     def tick_fade_progress(self) -> list[tuple[int, int, int]]:
         """Emit LEVEL_CHANGE_V2 progress/completion for active fades; return emitted tuples."""
-        emitted: list[tuple[int, int, int]] = []
-        for wire, current, target in self.world.collect_fade_progress():
-            self.events.level_change(wire, current, target)
-            emitted.append((wire, current, target))
-        return emitted
+        changes = self.world.collect_fade_progress()
+        self.events.emit_level_changes(changes)
+        return changes
 
     async def _fade_progress_loop(self) -> None:
         while True:
@@ -314,8 +306,7 @@ class Simulator:
 
     def inject_level(self, wire: int, level: int) -> None:
         """Mutate + emit LEVEL_CHANGE_V2 as if DALI_ARC_LEVEL was received."""
-        for target, previous, new in self.world.apply_level(wire, level):
-            self.events.level_change(target, previous, new)
+        self.events.apply_and_emit_level(wire, level)
 
     def inject_scene(self, wire: int, scene: int) -> None:
         """Mutate + emit scene/level/colour events as if DALI_SCENE was received."""
@@ -331,12 +322,9 @@ class Simulator:
 
     def inject_colour(self, wire: int, colour) -> None:
         """Mutate + emit COLOUR_CHANGE as if DALI_COLOUR was received."""
-        from .world import Colour
-
         if not isinstance(colour, Colour):
             raise TypeError("colour must be a Colour instance")
-        for target in self.world.apply_colour(wire, colour):
-            self.events.colour_change(target, colour.to_bytes())
+        self.events.apply_and_emit_colour(wire, colour)
 
     async def _interactive_console(self) -> None:
         """Read stdin commands to inject events while the server runs.
@@ -381,12 +369,10 @@ class Simulator:
                 return
 
     def _handle_console_line(self, line: str) -> None:
-        from .world import Colour
-
         parts = line.split()
         cmd = parts[0].lower()
         if cmd in ("quit", "exit", "q"):
-            if hasattr(self, "_stop") and self._stop is not None:
+            if self._stop is not None:
                 self._stop.set()
             return
         if cmd in ("help", "?"):

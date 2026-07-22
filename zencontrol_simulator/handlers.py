@@ -273,17 +273,6 @@ class CommandDispatcher:
             return request.data[index]
         return default
 
-    def _emit_level(self, wire: int, target_level: int, *, fading_seconds: int = 0) -> None:
-        """Mutate world state and emit LEVEL_CHANGE_V2 for each affected target."""
-        for target, previous, new in self.world.apply_level(
-            wire, target_level, fading_seconds=fading_seconds
-        ):
-            self.events.level_change(target, previous, new)
-
-    def _emit_per_light_level(self, wire: int, choose) -> None:
-        for target, previous, new in self.world.apply_per_light_level(wire, choose):
-            self.events.level_change(target, previous, new)
-
     def _unknown_target(self, seq: int) -> bytes:
         return _error(seq, ErrorCode.UNKNOWN_TARGET)
 
@@ -296,6 +285,28 @@ class CommandDispatcher:
             return None if self.world.group(wire - 64) is not None else self._unknown_target(seq)
         return self._unknown_target(seq)
 
+    def _with_level_target(self, request: Request, action) -> bytes:
+        """Validate ECG/group/broadcast wire, run action(wire), return OK."""
+        wire = self._addr(request)
+        err = self._check_level_target(request.seq, wire)
+        if err is not None:
+            return err
+        action(wire)
+        return _ok(request.seq)
+
+    def _with_light(self, request: Request, action) -> bytes:
+        """Run action(light) for an ECG address, else NO_ANSWER."""
+        light = self.world.light(self._addr(request))
+        if light is None:
+            return _no_answer(request.seq)
+        return action(light)
+
+    def _with_ecg_or_ecd(self, request: Request, action) -> bytes:
+        obj = self._ecg_or_ecd(self._addr(request))
+        if obj is None:
+            return _no_answer(request.seq)
+        return action(obj)
+
     def _level_for_wire(self, wire: int) -> Optional[int]:
         if wire <= 63:
             light = self.world.light(wire)
@@ -303,6 +314,31 @@ class CommandDispatcher:
         if 64 <= wire <= 79:
             return self.world.group_level(wire - 64)
         return None
+
+    def _light_or_group(self, wire: int):
+        if wire <= 63:
+            return self.world.light(wire)
+        if 64 <= wire <= 79:
+            return self.world.group(wire - 64)
+        return None
+
+    def _ecd(self, wire: int):
+        if not 64 <= wire <= 127:
+            return None
+        return self.world.device(wire - 64)
+
+    def _ecg_or_ecd(self, wire: int):
+        if wire <= 63:
+            return self.world.light(wire)
+        if 64 <= wire <= 127:
+            return self.world.device(wire - 64)
+        return None
+
+    def _instance_from_request(self, request: Request):
+        wire = self._addr(request)
+        if self._ecd(wire) is None:
+            return None
+        return self.world.instance(wire - 64, self._data(request, 3))
 
     def _enable_events(self, request: Request) -> bytes:
         mode = self._addr(request)
@@ -419,10 +455,10 @@ class CommandDispatcher:
         return _label_answer(request.seq, group.label)
 
     def _query_group_membership(self, request: Request) -> bytes:
-        light = self.world.light(self._addr(request))
-        if light is None:
-            return _no_answer(request.seq)
-        return _answer(request.seq, group_membership_bytes(light.groups))
+        return self._with_light(
+            request,
+            lambda light: _answer(request.seq, group_membership_bytes(light.groups)),
+        )
 
     def _query_scene_numbers_for_group(self, request: Request) -> bytes:
         group = self.world.group(self._addr(request))
@@ -462,13 +498,6 @@ class CommandDispatcher:
         self.events.profile_change(profile_id)
         return _ok(request.seq)
 
-    def _ecg_or_ecd(self, wire: int):
-        if wire <= 63:
-            return self.world.light(wire)
-        if 64 <= wire <= 127:
-            return self.world.device(wire - 64)
-        return None
-
     def _query_operating_mode(self, request: Request) -> bytes:
         # Docs default operating mode is 0; missing device → UNKNOWN_TARGET
         if self._ecg_or_ecd(self._addr(request)) is None:
@@ -476,16 +505,12 @@ class CommandDispatcher:
         return _answer(request.seq, bytes([0x00]))
 
     def _query_device_label(self, request: Request) -> bytes:
-        obj = self._ecg_or_ecd(self._addr(request))
-        if obj is None:
-            return _no_answer(request.seq)
-        return _label_answer(request.seq, obj.label)
+        return self._with_ecg_or_ecd(request, lambda obj: _label_answer(request.seq, obj.label))
 
     def _query_serial(self, request: Request) -> bytes:
-        obj = self._ecg_or_ecd(self._addr(request))
-        if obj is None:
-            return _no_answer(request.seq)
-        return _answer(request.seq, int_to_be(obj.serial, 8))
+        return self._with_ecg_or_ecd(
+            request, lambda obj: _answer(request.seq, int_to_be(obj.serial, 8))
+        )
 
     def _query_ean(self, request: Request) -> bytes:
         wire = self._addr(request)
@@ -523,10 +548,12 @@ class CommandDispatcher:
         return _answer(request.seq, bytes([level & 0xFF]))
 
     def _query_cg_type(self, request: Request) -> bytes:
-        light = self.world.light(self._addr(request))
-        if light is None:
-            return _no_answer(request.seq)
-        return _answer(request.seq, bitmap_from_addresses(light.cg_types, max_bits=32))
+        return self._with_light(
+            request,
+            lambda light: _answer(
+                request.seq, bitmap_from_addresses(light.cg_types, max_bits=32)
+            ),
+        )
 
     def _query_cg_status(self, request: Request) -> bytes:
         wire = self._addr(request)
@@ -565,157 +592,136 @@ class CommandDispatcher:
         return _no_answer(request.seq)
 
     def _query_last_scene(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        if wire <= 63:
-            light = self.world.light(wire)
-            if light is None:
-                return _no_answer(request.seq)
-            return _answer(request.seq, bytes([light.last_scene & 0xFF]))
-        if 64 <= wire <= 79:
-            group = self.world.group(wire - 64)
-            if group is None:
-                return _no_answer(request.seq)
-            return _answer(request.seq, bytes([group.last_scene & 0xFF]))
-        return _no_answer(request.seq)
+        obj = self._light_or_group(self._addr(request))
+        if obj is None:
+            return _no_answer(request.seq)
+        return _answer(request.seq, bytes([obj.last_scene & 0xFF]))
 
     def _query_last_scene_current(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        if wire <= 63:
-            light = self.world.light(wire)
-            if light is None:
-                return _no_answer(request.seq)
-            return _answer(request.seq, bytes([1 if light.last_scene_current else 0]))
-        if 64 <= wire <= 79:
-            group = self.world.group(wire - 64)
-            if group is None:
-                return _no_answer(request.seq)
-            return _answer(request.seq, bytes([1 if group.last_scene_current else 0]))
-        return _no_answer(request.seq)
+        obj = self._light_or_group(self._addr(request))
+        if obj is None:
+            return _no_answer(request.seq)
+        return _answer(request.seq, bytes([1 if obj.last_scene_current else 0]))
 
     def _query_min_level(self, request: Request) -> bytes:
-        light = self.world.light(self._addr(request))
-        if light is None:
-            return _no_answer(request.seq)
-        return _answer(request.seq, bytes([light.min_level & 0xFF]))
+        return self._with_light(
+            request, lambda light: _answer(request.seq, bytes([light.min_level & 0xFF]))
+        )
 
     def _query_max_level(self, request: Request) -> bytes:
-        light = self.world.light(self._addr(request))
-        if light is None:
-            return _no_answer(request.seq)
-        return _answer(request.seq, bytes([light.max_level & 0xFF]))
+        return self._with_light(
+            request, lambda light: _answer(request.seq, bytes([light.max_level & 0xFF]))
+        )
 
     def _query_fade_running(self, request: Request) -> bytes:
-        light = self.world.light(self._addr(request))
-        if light is None:
-            return _no_answer(request.seq)
-        light.refresh_status()
-        running = 1 if (light.status & 0x10) else 0
-        return _answer(request.seq, bytes([running]))
+        def go(light: Light) -> bytes:
+            light.refresh_status()
+            running = 1 if (light.status & 0x10) else 0
+            return _answer(request.seq, bytes([running]))
+
+        return self._with_light(request, go)
 
     def _query_colour(self, request: Request) -> bytes:
-        light = self.world.light(self._addr(request))
-        if light is None or light.colour is None:
-            return _no_answer(request.seq)
-        raw = light.colour.to_bytes()
-        if not raw:
-            return _no_answer(request.seq)
-        return _answer(request.seq, raw)
+        def go(light: Light) -> bytes:
+            if light.colour is None:
+                return _no_answer(request.seq)
+            raw = light.colour.to_bytes()
+            if not raw:
+                return _no_answer(request.seq)
+            return _answer(request.seq, raw)
+
+        return self._with_light(request, go)
 
     def _query_colour_features(self, request: Request) -> bytes:
-        light = self.world.light(self._addr(request))
-        if light is None:
-            return _no_answer(request.seq)
-        return _answer(request.seq, bytes([light.colour_features.to_byte()]))
+        return self._with_light(
+            request,
+            lambda light: _answer(request.seq, bytes([light.colour_features.to_byte()])),
+        )
 
     def _query_colour_temp_limits(self, request: Request) -> bytes:
-        light = self.world.light(self._addr(request))
-        if light is None or light.colour_temp_limits is None:
-            return _no_answer(request.seq)
-        return _answer(request.seq, light.colour_temp_limits.to_bytes())
+        def go(light: Light) -> bytes:
+            if light.colour_temp_limits is None:
+                return _no_answer(request.seq)
+            return _answer(request.seq, light.colour_temp_limits.to_bytes())
+
+        return self._with_light(request, go)
 
     def _query_scene_levels(self, request: Request) -> bytes:
-        light = self.world.light(self._addr(request))
-        if light is None:
-            return _no_answer(request.seq)
-        # Zencontrol scenes are 0–11. PDF returns 16 DALI gear slots (0–15);
-        # fill 0–11 from world state and leave 12–15 as 0xFF (unused).
-        out = bytearray([0xFF] * SCENE_LEVEL_SLOTS)
-        for i, level in enumerate(light.scene_levels[:MAX_SCENE]):
-            if level is not None:
-                out[i] = level & 0xFF
-        return _answer(request.seq, bytes(out))
+        def go(light: Light) -> bytes:
+            # Zencontrol scenes are 0–11. PDF returns 16 DALI gear slots (0–15);
+            # fill 0–11 from world state and leave 12–15 as 0xFF (unused).
+            out = bytearray([0xFF] * SCENE_LEVEL_SLOTS)
+            for i, level in enumerate(light.scene_levels[:MAX_SCENE]):
+                if level is not None:
+                    out[i] = level & 0xFF
+            return _answer(request.seq, bytes(out))
+
+        return self._with_light(request, go)
 
     def _query_scene_numbers_by_address(self, request: Request) -> bytes:
-        light = self.world.light(self._addr(request))
-        if light is None:
-            return _no_answer(request.seq)
-        # Scenes with a configured level (< 0xFF / not null); empty → NO_ANSWER
-        scenes = [i for i, level in enumerate(light.scene_levels[:MAX_SCENE]) if level is not None]
-        if not scenes:
-            return _no_answer(request.seq)
-        return _answer(request.seq, bytes(scenes))
+        def go(light: Light) -> bytes:
+            scenes = [
+                i for i, level in enumerate(light.scene_levels[:MAX_SCENE]) if level is not None
+            ]
+            if not scenes:
+                return _no_answer(request.seq)
+            return _answer(request.seq, bytes(scenes))
+
+        return self._with_light(request, go)
 
     def _query_colour_scene_membership(self, request: Request) -> bytes:
-        light = self.world.light(self._addr(request))
-        if light is None:
-            return _no_answer(request.seq)
-        scenes = [i for i, c in enumerate(light.scene_colours[:MAX_SCENE]) if c is not None]
-        if not scenes:
-            return _no_answer(request.seq)
-        return _answer(request.seq, bytes(scenes))
+        def go(light: Light) -> bytes:
+            scenes = [
+                i for i, c in enumerate(light.scene_colours[:MAX_SCENE]) if c is not None
+            ]
+            if not scenes:
+                return _no_answer(request.seq)
+            return _answer(request.seq, bytes(scenes))
+
+        return self._with_light(request, go)
 
     def _query_colour_scene_data(self, request: Request, start: int, end: int) -> bytes:
-        light = self.world.light(self._addr(request))
-        if light is None:
-            return _no_answer(request.seq)
-        out = bytearray()
-        for i in range(start, end):
-            colour = light.scene_colours[i] if i < len(light.scene_colours) else None
-            if colour is None:
-                # PDF: unused scene = type 0xFF + six 0xFF data bytes
-                out.extend(bytes([0xFF] * 7))
-            else:
-                out.extend(colour.to_scene_blob())
-        return _answer(request.seq, bytes(out))
+        def go(light: Light) -> bytes:
+            out = bytearray()
+            for i in range(start, end):
+                colour = light.scene_colours[i] if i < len(light.scene_colours) else None
+                if colour is None:
+                    # PDF: unused scene = type 0xFF + six 0xFF data bytes
+                    out.extend(bytes([0xFF] * 7))
+                else:
+                    out.extend(colour.to_scene_blob())
+            return _answer(request.seq, bytes(out))
+
+        return self._with_light(request, go)
 
     def _arc_level(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        err = self._check_level_target(request.seq, wire)
-        if err is not None:
-            return err
-        self._emit_level(wire, self._data(request, 3))
-        return _ok(request.seq)
+        return self._with_level_target(
+            request,
+            lambda wire: self.events.apply_and_emit_level(wire, self._data(request, 3)),
+        )
 
     def _off(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        err = self._check_level_target(request.seq, wire)
-        if err is not None:
-            return err
-        self._emit_level(wire, 0)
-        return _ok(request.seq)
+        return self._with_level_target(
+            request, lambda wire: self.events.apply_and_emit_level(wire, 0)
+        )
 
     def _recall_max(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        err = self._check_level_target(request.seq, wire)
-        if err is not None:
-            return err
-        self._emit_per_light_level(wire, lambda lt: lt.max_level)
-        return _ok(request.seq)
+        return self._with_level_target(
+            request,
+            lambda wire: self.events.apply_and_emit_per_light_level(
+                wire, lambda lt: lt.max_level
+            ),
+        )
 
     def _recall_min(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        err = self._check_level_target(request.seq, wire)
-        if err is not None:
-            return err
-        self._emit_per_light_level(wire, lambda lt: lt.min_level)
-        return _ok(request.seq)
+        return self._with_level_target(
+            request,
+            lambda wire: self.events.apply_and_emit_per_light_level(
+                wire, lambda lt: lt.min_level
+            ),
+        )
 
     def _step(self, request: Request, delta: int, on_if_off: bool = False, off_at_min: bool = False) -> bytes:
-        wire = self._addr(request)
-        err = self._check_level_target(request.seq, wire)
-        if err is not None:
-            return err
-
         def choose(lt: Light) -> int:
             current = lt.visible_level()
             # DALI UP must not ignite; only ON_STEP_UP does
@@ -731,75 +737,62 @@ class CommandDispatcher:
                 return lt.min_level if not off_at_min else 0
             return max(lt.min_level, min(lt.max_level, target))
 
-        self._emit_per_light_level(wire, choose)
-        return _ok(request.seq)
+        return self._with_level_target(
+            request,
+            lambda wire: self.events.apply_and_emit_per_light_level(wire, choose),
+        )
 
     def _custom_fade(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        err = self._check_level_target(request.seq, wire)
-        if err is not None:
-            return err
         level = self._data(request, 1)
         fade_s = (self._data(request, 2) << 8) | self._data(request, 3)
-        self._emit_level(wire, level, fading_seconds=fade_s)
-        return _ok(request.seq)
+        return self._with_level_target(
+            request,
+            lambda wire: self.events.apply_and_emit_level(
+                wire, level, fading_seconds=fade_s
+            ),
+        )
 
     def _stop_fade(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        err = self._check_level_target(request.seq, wire)
-        if err is not None:
-            return err
-        for target, previous, new in self.world.clear_fade(wire):
-            self.events.level_change(target, previous, new)
-        return _ok(request.seq)
+        return self._with_level_target(
+            request, lambda wire: self.events.apply_and_emit_stop_fade(wire)
+        )
 
     def _inhibit(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        err = self._check_level_target(request.seq, wire)
-        if err is not None:
-            return err
         seconds = (self._data(request, 2) << 8) | self._data(request, 3)
-        self.world.apply_inhibit(wire, seconds)
-        return _ok(request.seq)
+        return self._with_level_target(
+            request, lambda wire: self.world.apply_inhibit(wire, seconds)
+        )
 
     def _go_last_active(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        err = self._check_level_target(request.seq, wire)
-        if err is not None:
-            return err
-        self._emit_per_light_level(
-            wire, lambda lt: lt.last_active_level if lt.last_active_level else 254
+        return self._with_level_target(
+            request,
+            lambda wire: self.events.apply_and_emit_per_light_level(
+                wire, lambda lt: lt.last_active_level if lt.last_active_level else 254
+            ),
         )
-        return _ok(request.seq)
 
     def _scene(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        err = self._check_level_target(request.seq, wire)
-        if err is not None:
-            return err
         scene = self._data(request, 3)
         if not 0 <= scene < MAX_SCENE:
             return _error(request.seq, ErrorCode.INVALID_ARGS)
-        self.events.apply_and_emit_scene(wire, scene)
-        return _ok(request.seq)
+        return self._with_level_target(
+            request, lambda wire: self.events.apply_and_emit_scene(wire, scene)
+        )
 
     def _dali_colour(self, request: Request) -> bytes:
         if len(request.data) < 3 or len(request.data) > 9:
             return _error(request.seq, ErrorCode.INVALID_ARGS)
-        wire = request.data[0]
-        err = self._check_level_target(request.seq, wire)
-        if err is not None:
-            return err
-        level = request.data[1]
-        colour_bytes = request.data[2:]
-        colour = Colour.from_bytes(colour_bytes)
+        colour = Colour.from_bytes(request.data[2:])
         if colour is None:
             return _error(request.seq, ErrorCode.INVALID_ARGS)
-        for target in self.world.apply_colour(wire, colour):
-            self.events.colour_change(target, colour.to_bytes())
-        if level != 0xFF:
-            self._emit_level(wire, level)
-        return _ok(request.seq)
+        level = request.data[1]
+
+        def act(wire: int) -> None:
+            self.events.apply_and_emit_colour(wire, colour)
+            if level != 0xFF:
+                self.events.apply_and_emit_level(wire, level)
+
+        return self._with_level_target(request, act)
 
     def _query_addresses_with_instances(self, request: Request) -> bytes:
         start = self._data(request, 3, 0)
@@ -810,10 +803,7 @@ class CommandDispatcher:
         return _answer(request.seq, bytes(addrs))
 
     def _query_instances(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        if not 64 <= wire <= 127:
-            return _no_answer(request.seq)
-        device = self.world.device(wire - 64)
+        device = self._ecd(self._addr(request))
         if device is None or not device.instances:
             return _no_answer(request.seq)
         out = bytearray()
@@ -823,21 +813,13 @@ class CommandDispatcher:
         return _answer(request.seq, bytes(out))
 
     def _query_instance_label(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        inst_num = self._data(request, 3)
-        if not 64 <= wire <= 127:
-            return _no_answer(request.seq)
-        inst = self.world.instance(wire - 64, inst_num)
+        inst = self._instance_from_request(request)
         if inst is None:
             return _no_answer(request.seq)
         return _label_answer(request.seq, inst.label)
 
     def _query_occupancy_timers(self, request: Request) -> bytes:
-        wire = self._addr(request)
-        inst_num = self._data(request, 3)
-        if not 64 <= wire <= 127:
-            return _no_answer(request.seq)
-        inst = self.world.instance(wire - 64, inst_num)
+        inst = self._instance_from_request(request)
         if inst is None or inst.timers is None:
             return _no_answer(request.seq)
         t = inst.timers

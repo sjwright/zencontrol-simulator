@@ -7,7 +7,7 @@ import socket
 from typing import Optional
 
 from .protocol import EventCode, MULTICAST_GROUP, MULTICAST_PORT, build_event
-from .world import World
+from .world import SceneEffects, World
 
 logger = logging.getLogger(__name__)
 
@@ -104,94 +104,63 @@ class EventEmitter:
             logger.debug("Event not sent (no destination) %s", name)
         return sent
 
-    def level_change(self, wire_target: int, current: int, target_level: int) -> None:
+    def level_change(self, wire: int, current: int, target_level: int) -> None:
         self.emit(
-            wire_target,
+            wire,
             EventCode.LEVEL_CHANGE_V2,
             bytes([current & 0xFF, target_level & 0xFF]),
         )
 
-    def scene_change(self, wire_target: int, scene: int, active: bool = True) -> None:
+    def scene_change(self, wire: int, scene: int, active: bool = True) -> None:
         self.emit(
-            wire_target,
+            wire,
             EventCode.SCENE_CHANGE,
             bytes([scene & 0xFF, 1 if active else 0]),
         )
 
-    def apply_and_emit_scene(self, wire: int, scene: int) -> list[int]:
-        """Mutate world for a scene recall and emit companion TPI events.
+    def colour_change(self, wire: int, colour_bytes: bytes) -> None:
+        self.emit(wire, EventCode.COLOUR_CHANGE, colour_bytes)
 
-        Real controllers emit for the target and each member:
-        SCENE_CHANGE, LEVEL_CHANGE_V2, and COLOUR_CHANGE (when colour data applies).
-        Long fades (dim_time_ms > 2000) get LEVEL_CHANGE_V2 progress via the
-        simulator fade ticker.
-        """
-        prev_levels: dict[int, int] = {}
+    def emit_level_changes(self, changes: list[tuple[int, int, int]]) -> None:
+        for wire, previous, new in changes:
+            self.level_change(wire, previous, new)
+
+    def emit_scene_effects(self, scene: int, effects: SceneEffects) -> None:
+        """Emit SCENE → LEVEL → COLOUR per wire (ECG members, then group wires)."""
+        levels = {wire: (prev, dest) for wire, prev, dest in effects.levels}
+        colours = dict(effects.colours)
+        for wire in effects.scenes:
+            self.scene_change(wire, scene)
+            if wire in levels:
+                prev, dest = levels[wire]
+                self.level_change(wire, prev, dest)
+            if wire in colours:
+                self.colour_change(wire, colours[wire])
+
+    def apply_and_emit_level(
+        self, wire: int, level: int, *, fading_seconds: int = 0
+    ) -> None:
+        self.emit_level_changes(
+            self.world.apply_level(wire, level, fading_seconds=fading_seconds)
+        )
+
+    def apply_and_emit_per_light_level(self, wire: int, choose) -> None:
+        self.emit_level_changes(self.world.apply_per_light_level(wire, choose))
+
+    def apply_and_emit_colour(self, wire: int, colour) -> None:
+        blob = colour.to_bytes()
+        for target in self.world.apply_colour(wire, colour):
+            self.colour_change(target, blob)
+
+    def apply_and_emit_stop_fade(self, wire: int) -> None:
+        self.emit_level_changes(self.world.clear_fade(wire))
+
+    def apply_and_emit_scene(self, wire: int, scene: int) -> SceneEffects:
+        """Mutate + emit SCENE/LEVEL/COLOUR companions (see SceneEffects / apply_scene)."""
         fading = max(0.0, self.world.dim_time_ms / 1000.0)
-        if wire == 255:
-            prev_levels = {a: lt.visible_level() for a, lt in self.world.lights.items()}
-            for group in self.world.groups.values():
-                gl = self.world.group_level(group.number)
-                if gl is None or gl == 255:
-                    prev_levels[64 + group.number] = group.level
-                else:
-                    prev_levels[64 + group.number] = gl
-        elif wire <= 63:
-            light = self.world.light(wire)
-            if light:
-                prev_levels[wire] = light.visible_level()
-        elif 64 <= wire <= 79:
-            group = self.world.group(wire - 64)
-            gl = self.world.group_level(wire - 64)
-            if gl is None:
-                prev_levels[wire] = group.level if group else 0
-            elif gl == 255 and group is not None:
-                # Mixed is not a valid event current — use last stored group level
-                prev_levels[wire] = group.level
-            else:
-                prev_levels[wire] = gl
-            for light in self.world.lights_in_group(wire - 64):
-                prev_levels[light.address] = light.visible_level()
-
-        targets = self.world.apply_scene(wire, scene, fading_seconds=fading)
-        for target in targets:
-            self.scene_change(target, scene, active=True)
-            if target <= 63:
-                light = self.world.light(target)
-                if light is not None:
-                    dest = light.fade_to if light.fade_to is not None else light.level
-                    prev = prev_levels.get(target, dest)
-                    self.level_change(target, prev, dest)
-                    # COLOUR_CHANGE per member when this scene defines colour data
-                    if (
-                        0 <= scene < len(light.scene_colours)
-                        and light.scene_colours[scene] is not None
-                        and light.colour is not None
-                    ):
-                        self.colour_change(target, light.colour.to_bytes())
-            elif 64 <= target <= 79:
-                members = self.world.lights_in_group(target - 64)
-                dests = {
-                    (m.fade_to if m.fade_to is not None else m.level) for m in members
-                }
-                # Group LEVEL_CHANGE_V2 only when members share a destination arc
-                if len(dests) == 1:
-                    dest = next(iter(dests))
-                    prev = prev_levels.get(target, dest)
-                    self.level_change(target, prev, dest)
-                # COLOUR_CHANGE for the group when members agree after the scene
-                scene_has_colour = any(
-                    0 <= scene < len(m.scene_colours) and m.scene_colours[scene] is not None
-                    for m in members
-                )
-                if scene_has_colour:
-                    colour = self.world.agreed_member_colour(target - 64)
-                    if colour is not None:
-                        self.colour_change(target, colour.to_bytes())
-        return targets
-
-    def colour_change(self, wire_target: int, colour_bytes: bytes) -> None:
-        self.emit(wire_target, EventCode.COLOUR_CHANGE, colour_bytes)
+        effects = self.world.apply_scene(wire, scene, fading_seconds=fading)
+        self.emit_scene_effects(scene, effects)
+        return effects
 
     def profile_change(self, profile: int) -> None:
         self.emit(0, EventCode.PROFILE_CHANGE, int(profile).to_bytes(2, "big"))
