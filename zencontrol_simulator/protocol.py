@@ -1,4 +1,4 @@
-"""Wire framing for Zencontrol TPI Advanced (UDP)."""
+"""Wire framing for Zencontrol TPI Advanced (UDP / TCP)."""
 
 from __future__ import annotations
 
@@ -11,6 +11,11 @@ EVENT_MAGIC = b"\x5a\x43"
 DEFAULT_PORT = 5108
 MULTICAST_GROUP = "239.255.90.67"
 MULTICAST_PORT = 6969
+MAX_TCP_SESSIONS = 5
+
+# DALI_COLOUR stream bounds (clients omit unused colour bytes; PDF max is 14).
+_COLOUR_FRAME_MIN = 7   # magic+seq+cmd+addr+arc+type+checksum
+_COLOUR_FRAME_MAX = 14
 
 
 class ResponseType(IntEnum):
@@ -69,6 +74,65 @@ class ParseFailure:
     seq: int
     error: ErrorCode
     reason: str
+
+
+def request_frame_size(buf: bytes | bytearray) -> int | None:
+    """Return the byte length of one complete request at the start of *buf*.
+
+    Used for TCP/stream reassembly. Returns:
+      - positive int when a full frame is available
+      - ``None`` when more bytes are required
+      - ``0`` when the leading byte is not MAGIC (caller should drop one byte)
+    """
+    if not buf:
+        return None
+    if buf[0] != MAGIC:
+        return 0
+    if len(buf) < 3:
+        return None
+
+    command = buf[2]
+    if command in DYNAMIC_COMMANDS:
+        if len(buf) < 4:
+            return None
+        # magic + seq + cmd + length + data[length] + checksum
+        total = 5 + buf[3]
+        if len(buf) < total:
+            return None
+        return total
+
+    if command in VARIABLE_COMMANDS:
+        # Colour frames are variable length; find the shortest prefix whose
+        # trailing checksum validates (UDP clients omit unused colour bytes).
+        if len(buf) < _COLOUR_FRAME_MIN:
+            return None
+        upper = min(len(buf), _COLOUR_FRAME_MAX)
+        for total in range(_COLOUR_FRAME_MIN, upper + 1):
+            if checksum(buf[: total - 1]) == buf[total - 1]:
+                return total
+        if len(buf) < _COLOUR_FRAME_MAX:
+            return None
+        return _COLOUR_FRAME_MAX
+
+    # Basic (and unimplemented opcodes that use the basic 8-byte layout)
+    if len(buf) < 8:
+        return None
+    return 8
+
+
+def extract_request_frame(buf: bytearray) -> bytes | None:
+    """Remove and return one complete request from the front of *buf*, or None."""
+    while buf:
+        size = request_frame_size(buf)
+        if size is None:
+            return None
+        if size == 0:
+            del buf[0]
+            continue
+        frame = bytes(buf[:size])
+        del buf[:size]
+        return frame
+    return None
 
 
 def parse_request(datagram: bytes) -> Request | ParseFailure | None:

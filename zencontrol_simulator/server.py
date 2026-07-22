@@ -1,4 +1,4 @@
-"""Asyncio UDP server for the Zencontrol TPI Advanced simulator."""
+"""Asyncio UDP/TCP server for the Zencontrol TPI Advanced simulator."""
 
 from __future__ import annotations
 
@@ -9,10 +9,30 @@ from typing import Optional
 
 from .events import EventEmitter
 from .handlers import CommandDispatcher
-from .protocol import ParseFailure, Request, build_error, parse_request
+from .protocol import (
+    MAX_TCP_SESSIONS,
+    ParseFailure,
+    Request,
+    ResponseType,
+    build_error,
+    extract_request_frame,
+    parse_request,
+)
 from .world import World
 
 logger = logging.getLogger(__name__)
+
+
+def dispatch_request(dispatcher: CommandDispatcher, data: bytes) -> bytes | None:
+    """Parse one request frame and return a response, or None if unparseable."""
+    parsed = parse_request(data)
+    if parsed is None:
+        return None
+    if isinstance(parsed, ParseFailure):
+        dispatcher.error_count += 1
+        return build_error(parsed.seq, parsed.error)
+    assert isinstance(parsed, Request)
+    return dispatcher.handle(parsed)
 
 
 class SimulatorProtocol(asyncio.DatagramProtocol):
@@ -26,18 +46,12 @@ class SimulatorProtocol(asyncio.DatagramProtocol):
         logger.info("Listening for TPI commands on UDP %s:%s", sockname[0], sockname[1])
 
     def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
-        parsed = parse_request(data)
-        if parsed is None:
+        response = dispatch_request(self.dispatcher, data)
+        if response is None:
             logger.debug("Dropping unparseable packet from %s (%d bytes)", addr, len(data))
             return
-        if isinstance(parsed, ParseFailure):
-            logger.debug("Bad request from %s: %s", addr, parsed.reason)
-            if self.transport is not None:
-                self.transport.sendto(build_error(parsed.seq, parsed.error), addr)
-            self.dispatcher.error_count += 1
-            return
-        assert isinstance(parsed, Request)
-        response = self.dispatcher.handle(parsed)
+        if response[0] == ResponseType.ERROR:
+            logger.debug("Bad request from %s", addr)
         if self.transport is not None:
             self.transport.sendto(response, addr)
 
@@ -52,8 +66,17 @@ class Simulator:
         self.dispatcher = CommandDispatcher(world, self.events)
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._protocol: Optional[SimulatorProtocol] = None
+        self._tcp_server: Optional[asyncio.Server] = None
+        self._tcp_sessions = 0
         self._stop: Optional[asyncio.Event] = None
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
+
+    @property
+    def bind_port(self) -> int:
+        """Actual bound port (resolves ephemeral 0 after start)."""
+        if self._transport is not None:
+            return int(self._transport.get_extra_info("sockname")[1])
+        return self.world.bind_port
 
     async def start(self) -> None:
         loop = asyncio.get_running_loop()
@@ -64,6 +87,24 @@ class Simulator:
             lambda: SimulatorProtocol(self.dispatcher),
             sock=sock,
         )
+        # Share the resolved port so TCP and UDP match when bind_port was 0.
+        host = self.world.bind_host
+        port = self.bind_port
+        self.world.bind_port = port
+
+        self._tcp_server = await asyncio.start_server(
+            self._handle_tcp_client,
+            host=host,
+            port=port,
+            reuse_address=True,
+        )
+        logger.info(
+            "Listening for TPI commands on TCP %s:%s (max %d sessions)",
+            host,
+            port,
+            MAX_TCP_SESSIONS,
+        )
+
         mac = ":".join(f"{b:02x}" for b in self.world.mac)
         logger.info(
             "Zencontrol simulator ready — MAC %s, %d lights, %d groups, %d devices",
@@ -101,6 +142,10 @@ class Simulator:
             except asyncio.CancelledError:
                 pass
             self._heartbeat_task = None
+        if self._tcp_server is not None:
+            self._tcp_server.close()
+            await self._tcp_server.wait_closed()
+            self._tcp_server = None
         if self._transport is not None:
             self._transport.close()
             self._transport = None
@@ -111,6 +156,57 @@ class Simulator:
             self.dispatcher.error_count,
             self.events.sent_count,
         )
+
+    async def _handle_tcp_client(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        peer = writer.get_extra_info("peername")
+        if self._tcp_sessions >= MAX_TCP_SESSIONS:
+            logger.warning(
+                "Rejecting TCP client %s — already at max %d sessions",
+                peer,
+                MAX_TCP_SESSIONS,
+            )
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except OSError:
+                pass
+            return
+
+        self._tcp_sessions += 1
+        logger.info("TCP client connected %s (%d/%d)", peer, self._tcp_sessions, MAX_TCP_SESSIONS)
+        buf = bytearray()
+        try:
+            while True:
+                chunk = await reader.read(4096)
+                if not chunk:
+                    break
+                buf.extend(chunk)
+                while True:
+                    frame = extract_request_frame(buf)
+                    if frame is None:
+                        break
+                    response = dispatch_request(self.dispatcher, frame)
+                    if response is None:
+                        logger.debug("TCP drop unparseable frame from %s (%d bytes)", peer, len(frame))
+                        continue
+                    writer.write(response)
+                    await writer.drain()
+        except (ConnectionResetError, BrokenPipeError, asyncio.CancelledError):
+            pass
+        except Exception:
+            logger.exception("TCP session error from %s", peer)
+        finally:
+            self._tcp_sessions = max(0, self._tcp_sessions - 1)
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except OSError:
+                pass
+            logger.info("TCP client disconnected %s (%d/%d)", peer, self._tcp_sessions, MAX_TCP_SESSIONS)
 
     async def _heartbeat_loop(self) -> None:
         interval = self.world.heartbeat_interval
@@ -243,6 +339,7 @@ class Simulator:
                 f"requests={self.dispatcher.request_count} "
                 f"errors={self.dispatcher.error_count} "
                 f"events={self.events.sent_count} "
+                f"tcp={self._tcp_sessions}/{MAX_TCP_SESSIONS} "
                 f"mode=0x{self.world.event_mode:02x} "
                 f"profile={self.world.current_profile}"
             )
