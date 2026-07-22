@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import time
 from copy import copy
 from dataclasses import dataclass, field
@@ -16,10 +17,25 @@ from .protocol import mac_from_string
 
 INSTANCE_TYPES = {
     "push_button": 0x01,
+    "absolute_input": 0x02,
     "occupancy_sensor": 0x03,
+    "light_sensor": 0x04,
+    "general_purpose_sensor": 0x06,
+    "general_sensor": 0x06,
     1: 0x01,
+    2: 0x02,
     3: 0x03,
+    4: 0x04,
+    6: 0x06,
 }
+
+# How often simulated system variables are refreshed from the daylight sine.
+SYSVAR_SIMULATE_INTERVAL = 30.0
+# Real controllers re-emit LEVEL_CHANGE_V2 ~every 500ms during long fades.
+FADE_PROGRESS_INTERVAL_S = 0.5
+FADE_PROGRESS_MIN_MS = 2000
+# Signed BE16 range used by QUERY/SET_SYSTEM_VARIABLE.
+_SYSVAR_VALUE_MAX = 32767
 
 
 @dataclass
@@ -212,7 +228,11 @@ class Light:
         return self.status & 0xFF
 
     def set_level(
-        self, level: int, *, fading_seconds: int = 0, fade_origin: Optional[int] = None
+        self,
+        level: int,
+        *,
+        fading_seconds: float = 0,
+        fade_origin: Optional[int] = None,
     ) -> None:
         level = max(0, min(254, int(level)))
         from_level = self.visible_level()
@@ -225,7 +245,7 @@ class Light:
             self.fade_from = from_level
             self.fade_to = level
             self.fade_started_at = now
-            self.fading_until = now + fading_seconds
+            self.fading_until = now + float(fading_seconds)
             self.fade_origin = fade_origin
             self.status |= 0x10
             # Keep lamp_power_on aligned with currently visible light during fade
@@ -258,11 +278,21 @@ class Light:
             return False
         return True
 
-    def apply_scene(self, scene: int) -> None:
+    def apply_scene(
+        self,
+        scene: int,
+        *,
+        fading_seconds: float = 0,
+        fade_origin: Optional[int] = None,
+    ) -> None:
         self.last_scene = scene & 0xFF
         self.last_scene_current = True
         if 0 <= scene < len(self.scene_levels) and self.scene_levels[scene] is not None:
-            self.set_level(self.scene_levels[scene] or 0)
+            self.set_level(
+                self.scene_levels[scene] or 0,
+                fading_seconds=fading_seconds,
+                fade_origin=fade_origin,
+            )
             self.last_scene_current = True  # set_level cleared it
         if 0 <= scene < len(self.scene_colours) and self.scene_colours[scene] is not None:
             self.colour = copy(self.scene_colours[scene])
@@ -343,6 +373,24 @@ class SystemVariable:
     id: int
     name: str
     value: int = 0
+    # If set, value tracks a daylight sine (0 at midnight → simulate at midday).
+    simulate: Optional[int] = None
+
+
+def daylight_sine_value(maximum: int, *, seconds_since_midnight: Optional[float] = None) -> int:
+    """Map local time of day onto ``[0, maximum]`` with a raised cosine.
+
+    Midnight → 0, midday → *maximum*, next midnight → 0.
+    """
+    if maximum < 0:
+        raise ValueError(f"simulate maximum must be >= 0, got {maximum}")
+    if seconds_since_midnight is None:
+        lt = time.localtime()
+        seconds_since_midnight = (
+            lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec + time.time() % 1
+        )
+    phase = 2.0 * math.pi * (seconds_since_midnight % 86400.0) / 86400.0
+    return int(round(maximum * (1.0 - math.cos(phase)) / 2.0))
 
 
 @dataclass
@@ -378,6 +426,11 @@ class World:
     heartbeat_interval: float = 5.0
     heartbeat_ecd: Optional[int] = None
     heartbeat_instance: Optional[int] = None
+    # Default fade for scene recalls (milliseconds). Real controllers re-emit
+    # LEVEL_CHANGE_V2 every ~500ms while fading when this is greater than 2000.
+    dim_time_ms: int = 0
+    # First segment of fitting numbers (PDF QUERY_CONTROLLER_FITTING_NUMBER / defaults).
+    fitting_number: str = "1"
 
     def light(self, address: int) -> Optional[Light]:
         return self.lights.get(address)
@@ -681,12 +734,67 @@ class World:
             return changes
         return changes
 
-    def apply_scene(self, wire: int, scene: int) -> list[int]:
+    def collect_fade_progress(self) -> list[tuple[int, int, int]]:
+        """LEVEL_CHANGE_V2 progress/completion tuples: (wire, current, target).
+
+        Mid-fade repeats only when the fade's configured duration exceeds
+        FADE_PROGRESS_MIN_MS (real controllers ≈ every 500ms). Completions
+        (current == target) are always emitted when a fade expires.
+        """
+        now = time.time()
+        pending: list[tuple[Light, int, int, Optional[int]]] = []
+        for light in self.lights.values():
+            if (
+                light.fading_until is None
+                or light.fade_to is None
+                or light.fade_started_at is None
+            ):
+                continue
+            total_ms = (light.fading_until - light.fade_started_at) * 1000.0
+            origin = light.fade_origin
+            if now >= light.fading_until:
+                dest = int(light.fade_to)
+                pending.append((light, dest, dest, origin))
+            elif total_ms > FADE_PROGRESS_MIN_MS:
+                pending.append(
+                    (light, light.visible_level(expire=False), int(light.fade_to), origin)
+                )
+
+        changes: list[tuple[int, int, int]] = []
+        involved: dict[int, set[int]] = {}
+        for light, current, dest, origin in pending:
+            if light.fading_until is not None and now >= light.fading_until:
+                light._expire_fade_if_due()
+            changes.append((light.address, current, dest))
+            if origin is not None and 64 <= origin <= 79:
+                involved.setdefault(origin, set()).add(light.address)
+
+        for origin in sorted(involved):
+            group_num = origin - 64
+            group = self.groups.get(group_num)
+            addrs = involved[origin]
+            pool = [m for m in self.lights_in_group(group_num) if m.address in addrs]
+            if not pool:
+                continue
+            currents = {m.visible_level(expire=False) for m in pool}
+            dests = {(m.fade_to if m.fade_to is not None else m.level) for m in pool}
+            if len(currents) != 1 or len(dests) != 1:
+                continue
+            current = next(iter(currents))
+            dest = next(iter(dests))
+            if group is not None and current == dest:
+                group.level = dest
+            changes.append((origin, current, dest))
+
+        return changes
+
+    def apply_scene(self, wire: int, scene: int, *, fading_seconds: float = 0) -> list[int]:
         """Apply scene; return wire targets for SCENE_CHANGE events."""
         targets: list[int] = []
+        origin = wire if fading_seconds > 0 else None
         if wire == 255:
             for light in self.lights.values():
-                light.apply_scene(scene)
+                light.apply_scene(scene, fading_seconds=fading_seconds, fade_origin=origin)
                 targets.append(light.address)
             for group in self.groups.values():
                 group.last_scene = scene
@@ -700,7 +808,7 @@ class World:
             light = self.lights.get(wire)
             if light is None:
                 return []
-            light.apply_scene(scene)
+            light.apply_scene(scene, fading_seconds=fading_seconds, fade_origin=origin)
             self.invalidate_parent_groups(light)
             return [wire]
         if 64 <= wire <= 79:
@@ -712,7 +820,7 @@ class World:
             group.last_scene_current = True
             members = self.lights_in_group(group_num)
             for light in members:
-                light.apply_scene(scene)
+                light.apply_scene(scene, fading_seconds=fading_seconds, fade_origin=origin)
                 targets.append(light.address)
             self.invalidate_groups_sharing(members, except_group=group_num)
             level = self.group_level(group_num)
@@ -908,10 +1016,21 @@ def load_world(path: str | Path) -> World:
         vid = int(item["id"])
         if not 0 <= vid <= 147:
             raise ValueError(f"System variable id must be 0-147, got {vid}")
+        simulate = None
+        if item.get("simulate") is not None:
+            simulate = _as_int(item.get("simulate"))
+            if simulate < 0 or simulate > _SYSVAR_VALUE_MAX:
+                raise ValueError(
+                    f"System variable {vid} simulate must be 0-{_SYSVAR_VALUE_MAX}, got {simulate}"
+                )
+        value = _as_int(item.get("value"))
+        if simulate is not None:
+            value = daylight_sine_value(simulate)
         sysvars[vid] = SystemVariable(
             id=vid,
             name=str(item.get("name", f"Var {vid}")),
-            value=_as_int(item.get("value")),
+            value=value,
+            simulate=simulate,
         )
 
     version_raw = ctrl.get("version") or [2, 2, 11]
@@ -942,6 +1061,8 @@ def load_world(path: str | Path) -> World:
             if ctrl.get("heartbeat_instance") is not None
             else None
         ),
+        dim_time_ms=max(0, _as_int(ctrl.get("dim_time_ms"), 0)),
+        fitting_number=str(ctrl.get("fitting_number", "1")),
     )
     _validate_world(world)
     return world

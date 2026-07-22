@@ -55,10 +55,10 @@ async def test_zencontrol_python_discovery_and_control():
             profiles = await zen.get_profiles()
             sysvars = await zen.get_system_variables(give_up_after=5)
 
-            assert len(lights) == 4
-            assert len(groups) == 2
-            assert len(buttons) == 3
-            assert len(sensors) == 1
+            assert len(lights) == 12
+            assert len(groups) == 6
+            assert len(buttons) >= 9
+            assert len(sensors) >= 2
             assert len(profiles) == 3
             assert len(sysvars) >= 2
 
@@ -67,10 +67,14 @@ async def test_zencontrol_python_discovery_and_control():
             assert by_addr[1].features.get("brightness") is True
             assert by_addr[2].features.get("RGB") is True
             assert by_addr[3].features.get("brightness") is True
+            assert by_addr[5].features.get("brightness") is True
+            assert by_addr[7].features.get("temperature") is True
             # Instance labels reach button/sensor interview
             assert any(getattr(b, "instance_label", None) == "On/Off" for b in buttons)
             assert any(getattr(s, "instance_label", None) == "Motion" for s in sensors)
             assert any(getattr(b, "label", None) == "Living Room Switch" for b in buttons)
+            assert any(getattr(b, "label", None) == "Entrance 6-Button" for b in buttons)
+            assert any(getattr(s, "label", None) == "Porch Sensor" for s in sensors)
 
             await zen.start()
             await asyncio.sleep(0.2)

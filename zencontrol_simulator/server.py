@@ -18,7 +18,7 @@ from .protocol import (
     extract_request_frame,
     parse_request,
 )
-from .world import World
+from .world import SYSVAR_SIMULATE_INTERVAL, FADE_PROGRESS_INTERVAL_S, World, daylight_sine_value
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,8 @@ class Simulator:
         self._tcp_sessions = 0
         self._stop: Optional[asyncio.Event] = None
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
+        self._sysvar_sim_task: Optional[asyncio.Task[None]] = None
+        self._fade_progress_task: Optional[asyncio.Task[None]] = None
 
     @property
     def bind_port(self) -> int:
@@ -134,7 +136,39 @@ class Simulator:
                     name="zencontrol-heartbeat",
                 )
 
+        simulated = [v for v in self.world.system_variables.values() if v.simulate is not None]
+        if simulated:
+            names = ", ".join(f"{v.id}:{v.name}(max={v.simulate})" for v in simulated)
+            logger.info(
+                "System variable daylight simulate every %.0fs — %s",
+                SYSVAR_SIMULATE_INTERVAL,
+                names,
+            )
+            self._sysvar_sim_task = asyncio.create_task(
+                self._sysvar_simulate_loop(),
+                name="zencontrol-sysvar-simulate",
+            )
+
+        self._fade_progress_task = asyncio.create_task(
+            self._fade_progress_loop(),
+            name="zencontrol-fade-progress",
+        )
+
     async def stop(self) -> None:
+        if self._fade_progress_task is not None:
+            self._fade_progress_task.cancel()
+            try:
+                await self._fade_progress_task
+            except asyncio.CancelledError:
+                pass
+            self._fade_progress_task = None
+        if self._sysvar_sim_task is not None:
+            self._sysvar_sim_task.cancel()
+            try:
+                await self._sysvar_sim_task
+            except asyncio.CancelledError:
+                pass
+            self._sysvar_sim_task = None
         if self._heartbeat_task is not None:
             self._heartbeat_task.cancel()
             try:
@@ -213,6 +247,42 @@ class Simulator:
         while True:
             await asyncio.sleep(interval)
             self.events.occupancy_heartbeat()
+
+    def tick_sysvar_simulation(self, *, seconds_since_midnight: float | None = None) -> list[tuple[int, int]]:
+        """Refresh simulated system variables; return list of (id, new_value) that changed."""
+        changed: list[tuple[int, int]] = []
+        for var in self.world.system_variables.values():
+            if var.simulate is None:
+                continue
+            new_value = daylight_sine_value(
+                var.simulate, seconds_since_midnight=seconds_since_midnight
+            )
+            if new_value == var.value:
+                continue
+            var.value = new_value
+            self.events.system_variable_change(var.id, new_value, magnitude=0)
+            changed.append((var.id, new_value))
+        return changed
+
+    async def _sysvar_simulate_loop(self) -> None:
+        while True:
+            await asyncio.sleep(SYSVAR_SIMULATE_INTERVAL)
+            changed = self.tick_sysvar_simulation()
+            for var_id, value in changed:
+                logger.debug("Simulated system variable %s → %s", var_id, value)
+
+    def tick_fade_progress(self) -> list[tuple[int, int, int]]:
+        """Emit LEVEL_CHANGE_V2 progress/completion for active fades; return emitted tuples."""
+        emitted: list[tuple[int, int, int]] = []
+        for wire, current, target in self.world.collect_fade_progress():
+            self.events.level_change(wire, current, target)
+            emitted.append((wire, current, target))
+        return emitted
+
+    async def _fade_progress_loop(self) -> None:
+        while True:
+            await asyncio.sleep(FADE_PROGRESS_INTERVAL_S)
+            self.tick_fade_progress()
 
     async def run_forever(self, *, interactive: bool = False) -> None:
         await self.start()

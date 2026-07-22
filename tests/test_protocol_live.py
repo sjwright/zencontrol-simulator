@@ -46,7 +46,7 @@ async def test_discover_control_gear(live_protocol):
     p, c = live_protocol.protocol, live_protocol.controller
     gears = await p.query_control_gear_dali_addresses(c)
     numbers = sorted(a.number for a in gears)
-    assert numbers == [0, 1, 2, 3]
+    assert numbers == list(range(12))  # ECG 0–11
 
 
 @pytest.mark.asyncio
@@ -54,8 +54,16 @@ async def test_discover_groups(live_protocol):
     p, c = live_protocol.protocol, live_protocol.controller
     groups = await p.query_group_numbers(c)
     numbers = sorted(a.number for a in groups)
-    assert numbers == [0, 1]
+    assert numbers == [0, 1, 2, 3, 4, 5]
     assert await p.query_group_label(live_protocol.group(0)) == "Living Areas"
+    assert await p.query_group_label(live_protocol.group(2)) == "Hallway North Wing"
+    assert await p.query_group_label(live_protocol.group(4)) == "All Lights"
+
+    live_protocol.world.lights[0].set_level(10)
+    live_protocol.world.lights[1].set_level(77)
+    info = await p.query_group_by_number(live_protocol.group(0))
+    assert info == (0, True, 77)
+    assert await p.query_group_by_number(live_protocol.group(15)) is None
 
 
 @pytest.mark.asyncio
@@ -63,12 +71,21 @@ async def test_discover_devices_and_instances(live_protocol):
     p, c = live_protocol.protocol, live_protocol.controller
     devices = await p.query_dali_addresses_with_instances(c, start_address=0)
     ecd_nums = sorted(a.number for a in devices)
-    assert 0 in ecd_nums and 1 in ecd_nums
+    assert 0 in ecd_nums and 1 in ecd_nums and 2 in ecd_nums
+    assert 10 in ecd_nums and 11 in ecd_nums
 
     instances = await p.query_instances_by_address(live_protocol.ecd(0))
     types = {(i.number, i.type.value) for i in instances}
     assert (0, 1) in types  # push button
     assert (2, 3) in types  # occupancy
+
+    entrance = await p.query_instances_by_address(live_protocol.ecd(2))
+    assert len(entrance) == 6
+    assert all(i.type.value == 1 for i in entrance)
+
+    porch = await p.query_instances_by_address(live_protocol.ecd(10))
+    porch_types = {i.type.value for i in porch}
+    assert 3 in porch_types and 4 in porch_types  # occupancy + light sensor
 
 
 @pytest.mark.asyncio
@@ -192,6 +209,9 @@ async def test_scene_recall_queries(live_protocol):
     levels = await p.query_scene_levels_by_address(addr)
     assert levels[0] == 180
     assert levels[1] == 80
+
+    scenes = await p.query_scene_numbers_by_address(addr)
+    assert scenes == [0, 1, 2, 8, 9]
 
     await p.dali_arc_level(addr, 33)
     assert await p.dali_query_last_scene_is_current(addr) is False
@@ -623,6 +643,15 @@ async def test_xy_identity_and_serial(live_protocol):
     assert await p.query_dali_device_label(addr) == "XY Spotlight"
     serial = await p.query_dali_serial(addr)
     assert serial == 0x0100000000000004
+    ean = await p.query_dali_ean(addr)
+    assert ean == 10_000_000_000 + 3
+    assert await p.query_dali_fitting_number(addr) == "1.3"
+    assert await p.query_dali_fitting_number(live_protocol.ecd(0)) == "1.100"
+    assert await p.query_dali_fitting_number(live_protocol.ecd(4)) == "1.104"
+    assert await p.query_controller_fitting_number(live_protocol.controller) == "1"
+    assert await p.query_dali_instance_fitting_number(
+        live_protocol.instance(4, 2)
+    ) == "1.104.2"
     groups = await p.query_group_membership_by_address(addr)
     assert groups == [] or groups is None or list(groups) == []
 

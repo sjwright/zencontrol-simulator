@@ -119,8 +119,15 @@ class EventEmitter:
         )
 
     def apply_and_emit_scene(self, wire: int, scene: int) -> list[int]:
-        """Mutate world for a scene recall and emit companion TPI events."""
+        """Mutate world for a scene recall and emit companion TPI events.
+
+        Real controllers emit for the target and each member:
+        SCENE_CHANGE, LEVEL_CHANGE_V2, and COLOUR_CHANGE (when colour data applies).
+        Long fades (dim_time_ms > 2000) get LEVEL_CHANGE_V2 progress via the
+        simulator fade ticker.
+        """
         prev_levels: dict[int, int] = {}
+        fading = max(0.0, self.world.dim_time_ms / 1000.0)
         if wire == 255:
             prev_levels = {a: lt.visible_level() for a, lt in self.world.lights.items()}
             for group in self.world.groups.values():
@@ -146,15 +153,16 @@ class EventEmitter:
             for light in self.world.lights_in_group(wire - 64):
                 prev_levels[light.address] = light.visible_level()
 
-        targets = self.world.apply_scene(wire, scene)
+        targets = self.world.apply_scene(wire, scene, fading_seconds=fading)
         for target in targets:
             self.scene_change(target, scene, active=True)
             if target <= 63:
                 light = self.world.light(target)
                 if light is not None:
-                    prev = prev_levels.get(target, light.level)
-                    self.level_change(target, prev, light.level)
-                    # Only emit colour when this scene actually defines colour data
+                    dest = light.fade_to if light.fade_to is not None else light.level
+                    prev = prev_levels.get(target, dest)
+                    self.level_change(target, prev, dest)
+                    # COLOUR_CHANGE per member when this scene defines colour data
                     if (
                         0 <= scene < len(light.scene_colours)
                         and light.scene_colours[scene] is not None
@@ -162,11 +170,16 @@ class EventEmitter:
                     ):
                         self.colour_change(target, light.colour.to_bytes())
             elif 64 <= target <= 79:
-                level = self.world.group_level(target - 64)
-                if level is not None and level != 255:
-                    prev = prev_levels.get(target, level)
-                    self.level_change(target, prev, level)
                 members = self.world.lights_in_group(target - 64)
+                dests = {
+                    (m.fade_to if m.fade_to is not None else m.level) for m in members
+                }
+                # Group LEVEL_CHANGE_V2 only when members share a destination arc
+                if len(dests) == 1:
+                    dest = next(iter(dests))
+                    prev = prev_levels.get(target, dest)
+                    self.level_change(target, prev, dest)
+                # COLOUR_CHANGE for the group when members agree after the scene
                 scene_has_colour = any(
                     0 <= scene < len(m.scene_colours) and m.scene_colours[scene] is not None
                     for m in members

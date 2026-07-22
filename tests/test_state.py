@@ -17,7 +17,7 @@ from zencontrol_simulator.protocol import (
     checksum,
     parse_request,
 )
-from zencontrol_simulator.world import load_world
+from zencontrol_simulator.world import daylight_sine_value, load_world
 
 CONFIG = Path(__file__).resolve().parents[1] / "config.yaml"
 
@@ -261,6 +261,77 @@ async def test_heartbeat_loop_emits():
     assert after >= before + 2
 
 
+def test_daylight_sine_value_extrema():
+    assert daylight_sine_value(2500, seconds_since_midnight=0) == 0
+    assert daylight_sine_value(2500, seconds_since_midnight=12 * 3600) == 2500
+    assert daylight_sine_value(2500, seconds_since_midnight=86400) == 0
+    # 6am / 6pm should be about half
+    dawn = daylight_sine_value(2500, seconds_since_midnight=6 * 3600)
+    dusk = daylight_sine_value(2500, seconds_since_midnight=18 * 3600)
+    assert 1240 <= dawn <= 1260
+    assert 1240 <= dusk <= 1260
+
+
+def test_load_simulate_sets_daylight_value():
+    world = load_world(CONFIG)
+    lux = world.system_variables[1]
+    assert lux.simulate == 2500
+    assert lux.value == daylight_sine_value(2500)
+    assert world.lights[4].groups == [2]
+    assert world.lights[5].groups == [2, 3]
+    assert world.lights[6].groups == [3]
+    assert world.group(2) is not None and world.group(3) is not None
+    assert world.group(4) is not None and world.group(5) is not None
+    assert world.group(4).scenes == {}
+    assert 7 in world.lights and world.lights[7].colour_features.supports_tunable
+    assert 10 in world.lights and 7 in world.lights[10].cg_types
+    assert 11 in world.lights and 7 in world.lights[11].cg_types
+    entrance = world.device(2)
+    assert entrance is not None
+    assert len(entrance.instances) == 6
+    assert all(i.type == 0x01 for i in entrance.instances)
+    lounge = world.device(5)
+    assert lounge is not None
+    assert any(i.type == 0x06 for i in lounge.instances)
+    porch = world.device(10)
+    assert porch is not None
+    assert {i.type for i in porch.instances} == {0x03, 0x04}
+    assert len([v for v in world.system_variables.values() if "switch" in v.name.lower()]) >= 2
+    assert len([v for v in world.system_variables.values() if "sensor" in v.name.lower()]) >= 2
+
+
+@pytest.mark.asyncio
+async def test_sysvar_simulation_tick_emits():
+    from zencontrol_simulator.server import Simulator
+
+    world = load_world(CONFIG)
+    world.bind_host = "127.0.0.1"
+    world.bind_port = 0
+    world.heartbeat_interval = 0
+    sim = Simulator(world)
+    await sim.start()
+    try:
+        emitted = []
+        original = sim.events.system_variable_change
+
+        def capture(variable, value, magnitude=0):
+            emitted.append((variable, value, magnitude))
+            return original(variable, value, magnitude)
+
+        sim.events.system_variable_change = capture  # type: ignore[method-assign]
+        world.system_variables[1].value = -1  # force a change
+        changed = sim.tick_sysvar_simulation(seconds_since_midnight=12 * 3600)
+        assert changed == [(1, 2500)]
+        assert world.system_variables[1].value == 2500
+        assert emitted == [(1, 2500, 0)]
+        # No event when unchanged
+        emitted.clear()
+        assert sim.tick_sysvar_simulation(seconds_since_midnight=12 * 3600) == []
+        assert emitted == []
+    finally:
+        await sim.stop()
+
+
 def test_occupancy_timer_query_advances(monkeypatch):
     import time as time_mod
 
@@ -340,6 +411,14 @@ def test_group_scene_emits_member_events(monkeypatch):
     assert 0 in scene_targets and 1 in scene_targets
     assert world.lights[0].level == 80
     assert world.lights[1].level == 100
+    # Mixed member destinations → member LEVEL only (no agreed group arc)
+    level_targets = {t for t, c, _ in emitted if c == 0x0B}
+    assert 0 in level_targets and 1 in level_targets
+    assert 64 not in level_targets
+    # ECG 0 scene 1 has TC colour → member + group COLOUR_CHANGE
+    colour_targets = {t for t, c, _ in emitted if c == 0x08}
+    assert 0 in colour_targets
+    assert 64 in colour_targets
 
 
 def test_unknown_profile_rejected():
@@ -931,6 +1010,81 @@ def test_instance_and_ecd_labels():
     assert disp.handle(missing)[0] == ResponseType.NO_ANSWER
 
 
+def test_query_scene_numbers_by_address():
+    disp, _, _ = _disp()
+    req = parse_request(_basic(CMD["QUERY_SCENE_NUMBERS_BY_ADDRESS"], address=0))
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ANSWER
+    assert list(resp[3:-1]) == [0, 1, 2, 8, 9]
+
+    empty = parse_request(_basic(CMD["QUERY_SCENE_NUMBERS_BY_ADDRESS"], address=10))
+    assert not isinstance(empty, ParseFailure)
+    assert disp.handle(empty)[0] == ResponseType.NO_ANSWER  # switching gear: all null
+
+    missing = parse_request(_basic(CMD["QUERY_SCENE_NUMBERS_BY_ADDRESS"], address=50))
+    assert not isinstance(missing, ParseFailure)
+    assert disp.handle(missing)[0] == ResponseType.NO_ANSWER
+
+
+def test_query_group_by_number():
+    disp, world, _ = _disp()
+    world.lights[0].set_level(40)
+    world.lights[1].set_level(90)
+    req = parse_request(_basic(CMD["QUERY_GROUP_BY_NUMBER"], address=0))
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ANSWER
+    assert resp[3:6] == bytes([0, 0x01, 90])  # group, occupied, max member
+
+    missing = parse_request(_basic(CMD["QUERY_GROUP_BY_NUMBER"], address=15))
+    assert not isinstance(missing, ParseFailure)
+    assert disp.handle(missing)[0] == ResponseType.NO_ANSWER
+
+
+def test_query_dali_fitting_number():
+    disp, world, _ = _disp()
+    assert world.fitting_number == "1"
+    cases = (
+        (0, "1.0"),
+        (1, "1.1"),
+        (64, "1.100"),  # ECD 0 → address+100
+        (64 + 4, "1.104"),  # ECD 4
+        (50, "1.50"),  # PDF: no validity check — missing gear still answers
+    )
+    for addr, expected in cases:
+        req = parse_request(_basic(CMD["QUERY_DALI_FITTING_NUMBER"], address=addr))
+        assert not isinstance(req, ParseFailure)
+        resp = disp.handle(req)
+        assert resp[0] == ResponseType.ANSWER
+        assert resp[3:-1] == expected.encode()
+
+    ctrl = parse_request(_basic(CMD["QUERY_CONTROLLER_FITTING_NUMBER"]))
+    assert not isinstance(ctrl, ParseFailure)
+    assert disp.handle(ctrl)[3:-1] == b"1"
+
+    # ECD 4 instance 2 → 1.104.2
+    inst = parse_request(
+        _basic(CMD["QUERY_DALI_INSTANCE_FITTING_NUMBER"], address=64 + 4, d2=2)
+    )
+    assert not isinstance(inst, ParseFailure)
+    assert disp.handle(inst)[3:-1] == b"1.104.2"
+
+
+def test_query_dali_ean():
+    disp, _, _ = _disp()
+    for addr, expected in ((0, 10_000_000_000), (1, 10_000_000_001), (64, 10_000_000_064)):
+        req = parse_request(_basic(CMD["QUERY_DALI_EAN"], address=addr))
+        assert not isinstance(req, ParseFailure)
+        resp = disp.handle(req)
+        assert resp[0] == ResponseType.ANSWER
+        assert int.from_bytes(resp[3:9], "big") == expected
+
+    missing = parse_request(_basic(CMD["QUERY_DALI_EAN"], address=50))
+    assert not isinstance(missing, ParseFailure)
+    assert disp.handle(missing)[0] == ResponseType.NO_ANSWER
+
+
 def test_xy_colour_set_and_query():
     disp, world, _ = _disp()
     colour = bytes([0x10, 0x4E, 0x20, 0x55, 0xF0])  # x=20000, y=22000
@@ -1227,3 +1381,90 @@ system_variables: []
     req = parse_request(_basic(CMD["DALI_INHIBIT"], address=255, d1=0, d2=10))
     assert not isinstance(req, ParseFailure)
     assert disp.handle(req)[0] == ResponseType.OK
+
+
+def test_hallway_group_scene_emits_group_level_when_agreed(monkeypatch):
+    """Hallway members share scene levels → group LEVEL_CHANGE_V2 as well."""
+    disp, world, events = _disp()
+    emitted = []
+    monkeypatch.setattr(
+        events, "emit", lambda t, c, p=b"", instance=None: emitted.append((t, int(c), p)) or True
+    )
+    req = parse_request(_basic(CMD["DALI_SCENE"], address=66, d2=1))  # group 2 scene 1
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.OK
+    scene_targets = {t for t, c, _ in emitted if c == 0x05}
+    level_targets = {t for t, c, _ in emitted if c == 0x0B}
+    assert scene_targets >= {4, 5, 66}
+    assert level_targets >= {4, 5, 66}
+    assert world.lights[4].level == 80 and world.lights[5].level == 80
+
+
+def test_group_rgb_scene_emits_colour_for_member_and_group(monkeypatch):
+    disp, world, events = _disp()
+    emitted = []
+    monkeypatch.setattr(
+        events, "emit", lambda t, c, p=b"", instance=None: emitted.append((t, int(c), p)) or True
+    )
+    req = parse_request(_basic(CMD["DALI_SCENE"], address=65, d2=1))  # group 1 scene 1
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[0] == ResponseType.OK
+    colour_targets = {t for t, c, _ in emitted if c == 0x08}
+    assert 2 in colour_targets  # RGB Accent member
+    assert 65 in colour_targets  # group (agreed among coloured members)
+    assert world.lights[2].colour.b == 255
+
+
+def test_dim_time_scene_fade_emits_progress(monkeypatch):
+    import time as time_mod
+
+    from zencontrol_simulator.server import Simulator
+    from zencontrol_simulator.world import FADE_PROGRESS_MIN_MS
+
+    world = load_world(CONFIG)
+    world.dim_time_ms = FADE_PROGRESS_MIN_MS + 500  # 2.5s → progress ticks
+    world.heartbeat_interval = 0
+    sim = Simulator(world)
+    emitted = []
+    monkeypatch.setattr(
+        sim.events,
+        "emit",
+        lambda t, c, p=b"", instance=None: emitted.append((t, int(c), p)) or True,
+    )
+
+    base = 1_800_000_000.0
+    monkeypatch.setattr(time_mod, "time", lambda: base)
+    assert sim.events.apply_and_emit_scene(0, 1)  # ECG 0 scene 1 → 80
+    assert world.lights[0].fading_until is not None
+    start_levels = [(t, p) for t, c, p in emitted if c == 0x0B and t == 0]
+    assert start_levels
+    assert start_levels[0][1][1] == 80  # dimming to
+
+    emitted.clear()
+    monkeypatch.setattr(time_mod, "time", lambda: base + 1.0)
+    progress = sim.tick_fade_progress()
+    assert any(w == 0 and cur != 80 and dest == 80 for w, cur, dest in progress)
+
+    emitted.clear()
+    monkeypatch.setattr(time_mod, "time", lambda: base + 3.0)
+    done = sim.tick_fade_progress()
+    assert (0, 80, 80) in done
+    assert world.lights[0].fading_until is None
+
+
+def test_short_dim_time_skips_mid_fade_progress(monkeypatch):
+    import time as time_mod
+
+    from zencontrol_simulator.server import Simulator
+
+    world = load_world(CONFIG)
+    world.dim_time_ms = 1000  # ≤ 2000 → no mid-fade repeats
+    world.heartbeat_interval = 0
+    sim = Simulator(world)
+    monkeypatch.setattr(sim.events, "emit", lambda *a, **k: True)
+
+    base = 1_800_000_000.0
+    monkeypatch.setattr(time_mod, "time", lambda: base)
+    sim.events.apply_and_emit_scene(0, 1)
+    monkeypatch.setattr(time_mod, "time", lambda: base + 0.4)
+    assert sim.tick_fade_progress() == []

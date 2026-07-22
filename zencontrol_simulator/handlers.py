@@ -37,6 +37,8 @@ CMD = {
     "QUERY_OCCUPANCY_INSTANCE_TIMERS": 0x0C,
     "QUERY_INSTANCES_BY_ADDRESS": 0x0D,
     "DALI_COLOUR": 0x0E,
+    "QUERY_GROUP_BY_NUMBER": 0x12,
+    "QUERY_SCENE_NUMBERS_BY_ADDRESS": 0x14,
     "QUERY_GROUP_MEMBERSHIP_BY_ADDRESS": 0x15,
     "QUERY_DALI_ADDRESSES_WITH_INSTANCES": 0x16,
     "QUERY_SCENE_NUMBERS_FOR_GROUP": 0x1A,
@@ -44,7 +46,10 @@ CMD = {
     "QUERY_CONTROLLER_VERSION_NUMBER": 0x1C,
     "QUERY_CONTROL_GEAR_DALI_ADDRESSES": 0x1D,
     "QUERY_SCENE_LEVELS_BY_ADDRESS": 0x1E,
+    "QUERY_DALI_FITTING_NUMBER": 0x22,
+    "QUERY_DALI_INSTANCE_FITTING_NUMBER": 0x23,
     "QUERY_CONTROLLER_LABEL": 0x24,
+    "QUERY_CONTROLLER_FITTING_NUMBER": 0x25,
     "QUERY_IS_DALI_READY": 0x26,
     "QUERY_CONTROLLER_STARTUP_COMPLETE": 0x27,
     "DALI_ADD_TPI_EVENT_FILTER": 0x31,
@@ -83,6 +88,7 @@ CMD = {
     "DALI_CUSTOM_FADE": 0xB4,
     "DALI_GO_TO_LAST_ACTIVE_LEVEL": 0xB5,
     "QUERY_DALI_INSTANCE_LABEL": 0xB7,
+    "QUERY_DALI_EAN": 0xB8,
     "QUERY_DALI_SERIAL": 0xB9,
     "CHANGE_PROFILE_NUMBER": 0xC0,
     "DALI_STOP_FADE": 0xC1,
@@ -168,6 +174,8 @@ class CommandDispatcher:
                   lambda r: _answer(r.seq, bytes(w.version)))
         self._reg(CMD["QUERY_CONTROLLER_LABEL"],
                   lambda r: _label_answer(r.seq, w.label))
+        self._reg(CMD["QUERY_CONTROLLER_FITTING_NUMBER"],
+                  lambda r: _label_answer(r.seq, w.fitting_number or "1"))
         self._reg(CMD["QUERY_CONTROLLER_STARTUP_COMPLETE"],
                   lambda r: _ok(r.seq) if w.startup_complete else _no_answer(r.seq))
         self._reg(CMD["QUERY_IS_DALI_READY"],
@@ -183,6 +191,7 @@ class CommandDispatcher:
         self._reg(CMD["QUERY_DALI_TPI_EVENT_FILTERS"], self._query_filters)
 
         self._reg(CMD["QUERY_GROUP_NUMBERS"], self._query_group_numbers)
+        self._reg(CMD["QUERY_GROUP_BY_NUMBER"], self._query_group_by_number)
         self._reg(CMD["QUERY_GROUP_LABEL"], self._query_group_label)
         self._reg(CMD["QUERY_GROUP_MEMBERSHIP_BY_ADDRESS"], self._query_group_membership)
         self._reg(CMD["QUERY_SCENE_NUMBERS_FOR_GROUP"], self._query_scene_numbers_for_group)
@@ -198,6 +207,9 @@ class CommandDispatcher:
                   lambda r: _answer(r.seq, bitmap_from_addresses(list(w.lights.keys()))))
         self._reg(CMD["QUERY_DALI_DEVICE_LABEL"], self._query_device_label)
         self._reg(CMD["QUERY_DALI_SERIAL"], self._query_serial)
+        self._reg(CMD["QUERY_DALI_EAN"], self._query_ean)
+        self._reg(CMD["QUERY_DALI_FITTING_NUMBER"], self._query_dali_fitting_number)
+        self._reg(CMD["QUERY_DALI_INSTANCE_FITTING_NUMBER"], self._query_dali_instance_fitting_number)
         self._reg(CMD["DALI_QUERY_LEVEL"], self._query_level)
         self._reg(CMD["DALI_QUERY_CG_TYPE"], self._query_cg_type)
         self._reg(CMD["DALI_QUERY_CONTROL_GEAR_STATUS"], self._query_cg_status)
@@ -210,6 +222,7 @@ class CommandDispatcher:
         self._reg(CMD["QUERY_DALI_COLOUR_FEATURES"], self._query_colour_features)
         self._reg(CMD["QUERY_DALI_COLOUR_TEMP_LIMITS"], self._query_colour_temp_limits)
         self._reg(CMD["QUERY_SCENE_LEVELS_BY_ADDRESS"], self._query_scene_levels)
+        self._reg(CMD["QUERY_SCENE_NUMBERS_BY_ADDRESS"], self._query_scene_numbers_by_address)
         self._reg(CMD["QUERY_COLOUR_SCENE_MEMBERSHIP_BY_ADDR"], self._query_colour_scene_membership)
         self._reg(CMD["QUERY_COLOUR_SCENE_0_7_DATA_FOR_ADDR"],
                   lambda r: self._query_colour_scene_data(r, 0, 8))
@@ -377,6 +390,17 @@ class CommandDispatcher:
             return _no_answer(request.seq)
         return _answer(request.seq, bytes(nums))
 
+    def _query_group_by_number(self, request: Request) -> bytes:
+        # Address byte is group number 0–15 (not wire 64–79).
+        group_num = self._addr(request)
+        group = self.world.group(group_num)
+        if group is None:
+            return _no_answer(request.seq)
+        members = self.world.lights_in_group(group_num)
+        level = max((m.visible_level() for m in members), default=0)
+        # Occupancy always asserted; level is brightest member (else 0).
+        return _answer(request.seq, bytes([group_num & 0xFF, 0x01, level & 0xFF]))
+
     def _query_group_label(self, request: Request) -> bytes:
         group = self.world.group(self._addr(request))
         if group is None:
@@ -445,6 +469,35 @@ class CommandDispatcher:
         if obj is None:
             return _no_answer(request.seq)
         return _answer(request.seq, int_to_be(obj.serial, 8))
+
+    def _query_ean(self, request: Request) -> bytes:
+        wire = self._addr(request)
+        if self._ecg_or_ecd(wire) is None:
+            return _no_answer(request.seq)
+        # Synthetic 11-digit GTIN: 10000000000 + wire address (ECG 0–63 / ECD 64–127)
+        return _answer(request.seq, int_to_be(10_000_000_000 + wire, 6))
+
+    def _query_dali_fitting_number(self, request: Request) -> bytes:
+        # Controller fitting + "." + address; ECD uses address+100 (ECD 4 → "1.104").
+        wire = self._addr(request)
+        cid = self.world.fitting_number or "1"
+        if 0 <= wire <= 63:
+            text = f"{cid}.{wire}"
+        elif 64 <= wire <= 127:
+            text = f"{cid}.{100 + (wire - 64)}"
+        else:
+            return _no_answer(request.seq)
+        return _label_answer(request.seq, text)
+
+    def _query_dali_instance_fitting_number(self, request: Request) -> bytes:
+        # Same as device fitting, plus "." + instance (ECD 4 inst 2 → "1.104.2").
+        wire = self._addr(request)
+        if not 64 <= wire <= 127:
+            return _no_answer(request.seq)
+        cid = self.world.fitting_number or "1"
+        instance = self._data(request, 3)
+        text = f"{cid}.{100 + (wire - 64)}.{instance}"
+        return _label_answer(request.seq, text)
 
     def _query_level(self, request: Request) -> bytes:
         level = self._level_for_wire(self._addr(request))
@@ -574,6 +627,16 @@ class CommandDispatcher:
             if level is not None:
                 out[i] = level & 0xFF
         return _answer(request.seq, bytes(out))
+
+    def _query_scene_numbers_by_address(self, request: Request) -> bytes:
+        light = self.world.light(self._addr(request))
+        if light is None:
+            return _no_answer(request.seq)
+        # Scenes with a configured level (< 0xFF / not null); empty → NO_ANSWER
+        scenes = [i for i, level in enumerate(light.scene_levels[:MAX_SCENE]) if level is not None]
+        if not scenes:
+            return _no_answer(request.seq)
+        return _answer(request.seq, bytes(scenes))
 
     def _query_colour_scene_membership(self, request: Request) -> bytes:
         light = self.world.light(self._addr(request))

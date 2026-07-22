@@ -1,6 +1,11 @@
 # World model for zencontrol-tpi / zencontrol-python testing.
 # Initial values load from this file; control commands mutate in-memory state
 # (and emit TPI events). State is not written back to disk.
+#
+# Coverage goal: at least two of every entity kind present in a typical live
+# controller dump (see config.from-live.yaml): TC / dimmer / switching gear,
+# groups with and without scenes, 1-/3-/4-/6-button pads (+ general_sensor
+# variants), occupancy+lux, switch/sensor/other system variables.
 
 controller:
   bind_host: "0.0.0.0"
@@ -8,12 +13,16 @@ controller:
   mac: "02:00:00:00:00:01"
   label: "Simulator"
   version: [2, 2, 11]
+  fitting_number: "1"
   startup_complete: true
   dali_ready: true
   event_mode: 0x01  # enabled + multicast
   # IS_OCCUPIED keepalive for easy multicast discovery. Note: zencontrol-python
   # treats every IS_OCCUPIED as motion (hold timer restarts); set 0 if testing occupancy clear.
   heartbeat_interval: 5
+  # Scene-recall fade in milliseconds. When > 2000, LEVEL_CHANGE_V2 progress
+  # events are re-emitted ~every 500ms (0 = instant, matches unit-test default).
+  dim_time_ms: 0
   # heartbeat_ecd / heartbeat_instance default to the first occupancy sensor
 
 lights:
@@ -152,6 +161,222 @@ lights:
       - null
     status: 0x04
 
+  # Overlapping membership demo: 4+5 in group 2, 5+6 in group 3
+  - address: 4
+    label: "Hallway North"
+    serial: 0x0100000000000005
+    level: 100
+    min_level: 1
+    max_level: 254
+    last_scene: 0
+    last_scene_current: true
+    cg_types: [6]
+    colour: null
+    colour_features:
+      supports_xy: false
+      supports_tunable: false
+      primary_count: 0
+      rgbwaf_channels: 0
+    groups: [2]
+    scene_levels: [200, 80, 0, null, null, null, null, null, null, null, null, null]
+    status: 0x04
+
+  - address: 5
+    label: "Hallway Mid"
+    serial: 0x0100000000000006
+    level: 100
+    min_level: 1
+    max_level: 254
+    last_scene: 0
+    last_scene_current: true
+    cg_types: [6]
+    colour: null
+    colour_features:
+      supports_xy: false
+      supports_tunable: false
+      primary_count: 0
+      rgbwaf_channels: 0
+    groups: [2, 3]
+    scene_levels: [200, 80, 0, null, null, null, null, null, null, null, null, null]
+    status: 0x04
+
+  - address: 6
+    label: "Hallway South"
+    serial: 0x0100000000000007
+    level: 100
+    min_level: 1
+    max_level: 254
+    last_scene: 0
+    last_scene_current: true
+    cg_types: [6]
+    colour: null
+    colour_features:
+      supports_xy: false
+      supports_tunable: false
+      primary_count: 0
+      rgbwaf_channels: 0
+    groups: [3]
+    scene_levels: [200, 80, 0, null, null, null, null, null, null, null, null, null]
+    status: 0x04
+
+  # Second tunable-white (live controllers are mostly TC)
+  - address: 7
+    label: "Office Desk"
+    serial: 0x0100000000000008
+    level: 200
+    min_level: 1
+    max_level: 254
+    last_scene: 0
+    last_scene_current: false
+    cg_types: [6, 8]
+    colour:
+      type: tc
+      kelvin: 4000
+    colour_features:
+      supports_xy: false
+      supports_tunable: true
+      primary_count: 0
+      rgbwaf_channels: 0
+    colour_temp_limits:
+      physical_warmest: 2700
+      physical_coolest: 6500
+      soft_warmest: 2700
+      soft_coolest: 6500
+      step_value: 1
+    # Keep out of group 0 — tests assume group 0 is only ECG 0+1
+    groups: [4]
+    scene_levels: [200, 100, 0, null, null, null, null, null, null, null, null, null]
+    scene_colours:
+      - {type: tc, kelvin: 4000}
+      - {type: tc, kelvin: 3000}
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+    status: 0x04
+
+  # Second RGB
+  - address: 8
+    label: "RGB Cove"
+    serial: 0x0100000000000009
+    level: 64
+    min_level: 1
+    max_level: 254
+    last_scene: 1
+    last_scene_current: true
+    cg_types: [8]
+    colour:
+      type: rgbwaf
+      r: 0
+      g: 128
+      b: 255
+      w: 0
+      a: 0
+      f: 0
+    colour_features:
+      supports_xy: false
+      supports_tunable: false
+      primary_count: 0
+      rgbwaf_channels: 3
+    # Keep out of group 1 — tests assume group 1 is ECG 1 (dimmer) + ECG 2 (RGB)
+    groups: [4]
+    scene_levels: [64, 32, 0, null, null, null, null, null, null, null, null, null]
+    scene_colours:
+      - {type: rgbwaf, r: 0, g: 128, b: 255, w: 0, a: 0, f: 0}
+      - {type: rgbwaf, r: 255, g: 0, b: 128, w: 0, a: 0, f: 0}
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+    status: 0x04
+
+  # Second XY
+  - address: 9
+    label: "XY Niche"
+    serial: 0x010000000000000A
+    level: 80
+    min_level: 1
+    max_level: 254
+    last_scene: 0
+    last_scene_current: false
+    cg_types: [6, 8]
+    colour:
+      type: xy
+      x: 18000
+      y: 21000
+    colour_features:
+      supports_xy: true
+      supports_tunable: false
+      primary_count: 0
+      rgbwaf_channels: 0
+    groups: [4]
+    scene_levels: [80, 40, 0, null, null, null, null, null, null, null, null, null]
+    scene_colours:
+      - {type: xy, x: 18000, y: 21000}
+      - {type: xy, x: 12000, y: 16000}
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+      - null
+    status: 0x04
+
+  # Switching gear (cg type 7) — common on live controllers for panels / towel rails
+  - address: 10
+    label: "Garage Panels"
+    serial: 0x010000000000000B
+    level: 0
+    min_level: 0
+    max_level: 254
+    last_scene: 0
+    last_scene_current: false
+    cg_types: [7]
+    colour: null
+    colour_features:
+      supports_xy: false
+      supports_tunable: false
+      primary_count: 0
+      rgbwaf_channels: 0
+    groups: [5]
+    scene_levels: [null, null, null, null, null, null, null, null, null, null, null, null]
+    status: 0x00
+
+  - address: 11
+    label: "Ensuite Towel"
+    serial: 0x010000000000000C
+    level: 0
+    min_level: 0
+    max_level: 254
+    last_scene: 0
+    last_scene_current: false
+    cg_types: [7]
+    colour: null
+    colour_features:
+      supports_xy: false
+      supports_tunable: false
+      primary_count: 0
+      rgbwaf_channels: 0
+    groups: [5]
+    scene_levels: [null, null, null, null, null, null, null, null, null, null, null, null]
+    status: 0x00
+
 groups:
   - number: 0
     label: "Living Areas"
@@ -168,6 +393,33 @@ groups:
       0: "Task"
       1: "Dinner"
       2: "Off"
+
+  - number: 2
+    label: "Hallway North Wing"
+    level: 100
+    scenes:
+      0: "Bright"
+      1: "Dim"
+      2: "Off"
+
+  - number: 3
+    label: "Hallway South Wing"
+    level: 100
+    scenes:
+      0: "Bright"
+      1: "Dim"
+      2: "Off"
+
+  # Groups without labelled scenes (matches many live groups)
+  - number: 4
+    label: "All Lights"
+    level: 0
+    scenes: {}
+
+  - number: 5
+    label: "Utility"
+    level: 0
+    scenes: {}
 
 devices:
   - address: 0
@@ -197,6 +449,218 @@ devices:
         type: push_button
         label: "Kitchen Toggle"
 
+  - address: 2
+    label: "Entrance 6-Button"
+    serial: 0x0200000000000003
+    instances:
+      - number: 0
+        type: push_button
+        label: "Button 1"
+      - number: 1
+        type: push_button
+        label: "Button 2"
+      - number: 2
+        type: push_button
+        label: "Button 3"
+      - number: 3
+        type: push_button
+        label: "Button 4"
+      - number: 4
+        type: push_button
+        label: "Button 5"
+      - number: 5
+        type: push_button
+        label: "Button 6"
+
+  # Second single-button ECD
+  - address: 3
+    label: "Pantry Switch"
+    serial: 0x0200000000000004
+    instances:
+      - number: 0
+        type: push_button
+        label: "Pantry Toggle"
+
+  # Second 6-button pad (no general sensor)
+  - address: 4
+    label: "Office 6-Button"
+    serial: 0x0200000000000005
+    instances:
+      - number: 0
+        type: push_button
+        label: "Office B1"
+      - number: 1
+        type: push_button
+        label: "Office B2"
+      - number: 2
+        type: push_button
+        label: "Office B3"
+      - number: 3
+        type: push_button
+        label: "Office B4"
+      - number: 4
+        type: push_button
+        label: "Office B5"
+      - number: 5
+        type: push_button
+        label: "Office B6"
+
+  # 6-button + general_sensor (common live shape)
+  - address: 5
+    label: "Lounge 6-Button"
+    serial: 0x0200000000000006
+    instances:
+      - number: 0
+        type: push_button
+        label: "Lounge B1"
+      - number: 1
+        type: push_button
+        label: "Lounge B2"
+      - number: 2
+        type: push_button
+        label: "Lounge B3"
+      - number: 3
+        type: push_button
+        label: "Lounge B4"
+      - number: 4
+        type: push_button
+        label: "Lounge B5"
+      - number: 5
+        type: push_button
+        label: "Lounge B6"
+      - number: 6
+        type: general_sensor
+        label: "Lounge GP"
+
+  - address: 6
+    label: "Garage 6-Button"
+    serial: 0x0200000000000007
+    instances:
+      - number: 0
+        type: push_button
+        label: "Garage B1"
+      - number: 1
+        type: push_button
+        label: "Garage B2"
+      - number: 2
+        type: push_button
+        label: "Garage B3"
+      - number: 3
+        type: push_button
+        label: "Garage B4"
+      - number: 4
+        type: push_button
+        label: "Garage B5"
+      - number: 5
+        type: push_button
+        label: "Garage B6"
+      - number: 6
+        type: general_sensor
+        label: "Garage GP"
+
+  # 4-button pads (live bedheads / guest pads)
+  - address: 7
+    label: "Master Bedhead"
+    serial: 0x0200000000000008
+    instances:
+      - number: 0
+        type: push_button
+        label: "Master Up"
+      - number: 1
+        type: push_button
+        label: "Master Right"
+      - number: 2
+        type: push_button
+        label: "Master Down"
+      - number: 3
+        type: push_button
+        label: "Master Left"
+
+  - address: 8
+    label: "Guest Bedhead"
+    serial: 0x0200000000000009
+    instances:
+      - number: 0
+        type: push_button
+        label: "Guest Up"
+      - number: 1
+        type: push_button
+        label: "Guest Right"
+      - number: 2
+        type: push_button
+        label: "Guest Down"
+      - number: 3
+        type: push_button
+        label: "Guest Left"
+
+  # 3-button + general_sensor (live Echo-style pad)
+  - address: 9
+    label: "Echo Pad"
+    serial: 0x020000000000000C
+    instances:
+      - number: 0
+        type: push_button
+        label: "Echo B1"
+      - number: 1
+        type: push_button
+        label: "Echo B2"
+      - number: 2
+        type: push_button
+        label: "Echo B3"
+      - number: 3
+        type: general_sensor
+        label: "Echo GP"
+
+  - address: 12
+    label: "Annex Pad"
+    serial: 0x020000000000000D
+    instances:
+      - number: 0
+        type: push_button
+        label: "Annex B1"
+      - number: 1
+        type: push_button
+        label: "Annex B2"
+      - number: 2
+        type: push_button
+        label: "Annex B3"
+      - number: 3
+        type: general_sensor
+        label: "Annex GP"
+
+  # Occupancy + light sensor combos (live porch / entrance)
+  - address: 10
+    label: "Porch Sensor"
+    serial: 0x020000000000000A
+    instances:
+      - number: 0
+        type: occupancy_sensor
+        label: "Porch Motion"
+        timers:
+          deadtime: 1
+          hold: 60
+          report: 20
+          last_detect: 30
+      - number: 1
+        type: light_sensor
+        label: "Porch Lux"
+
+  - address: 11
+    label: "Entrance Sensor"
+    serial: 0x020000000000000B
+    instances:
+      - number: 0
+        type: occupancy_sensor
+        label: "Entrance Motion"
+        timers:
+          deadtime: 1
+          hold: 90
+          report: 20
+          last_detect: 5
+      - number: 1
+        type: light_sensor
+        label: "Entrance Lux"
+
 profiles:
   current: 1
   last_scheduled: 1
@@ -214,4 +678,18 @@ system_variables:
     value: 0
   - id: 1
     name: "Demo Lux Sensor"
-    value: 420
+    # Daylight sine: 0 at midnight → simulate at midday; refreshed every 30s
+    simulate: 2500
+    value: 0
+  - id: 2
+    name: "Garage Side Door switch"
+    value: 0
+  - id: 3
+    name: "Porch Lux sensor"
+    value: 120
+  - id: 4
+    name: "Garage Front Opening"
+    value: 0
+  - id: 5
+    name: "Garage Front Closing"
+    value: -1
