@@ -8,7 +8,7 @@ See below for a table of feature completeness. Built in concert with
 the human-coded
 [`zencontrol-python`](https://github.com/sjwright/zencontrol-python)
 protocol implementation and the partially vibe-coded
-[`zencontrol-tpi`](https://github.com/sjwright/zencontrol-tpi)
+[`zencontrol-homeassistant`](https://github.com/sjwright/zencontrol-homeassistant)
 Home Assistant integration.
 
 What follows is mostly AI slop documentation, but the tables are
