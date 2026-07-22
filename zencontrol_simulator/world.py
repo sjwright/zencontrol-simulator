@@ -766,25 +766,34 @@ class World:
             if light.fading_until is not None and now >= light.fading_until:
                 light._expire_fade_if_due()
             changes.append((light.address, current, dest))
-            if origin is not None and 64 <= origin <= 79:
+            # Track group-origin (64–79) and broadcast-origin (255) fades so we
+            # can synthesize companion LEVEL_CHANGE_V2 on group wires when agreed.
+            if origin is not None and (64 <= origin <= 79 or origin == 255):
                 involved.setdefault(origin, set()).add(light.address)
 
-        for origin in sorted(involved):
-            group_num = origin - 64
+        def _append_agreed_group(group_num: int, addrs: set[int], wire: int) -> None:
             group = self.groups.get(group_num)
-            addrs = involved[origin]
             pool = [m for m in self.lights_in_group(group_num) if m.address in addrs]
             if not pool:
-                continue
+                return
             currents = {m.visible_level(expire=False) for m in pool}
             dests = {(m.fade_to if m.fade_to is not None else m.level) for m in pool}
             if len(currents) != 1 or len(dests) != 1:
-                continue
+                return
             current = next(iter(currents))
             dest = next(iter(dests))
             if group is not None and current == dest:
                 group.level = dest
-            changes.append((origin, current, dest))
+            changes.append((wire, current, dest))
+
+        for origin in sorted(o for o in involved if 64 <= o <= 79):
+            _append_agreed_group(origin - 64, involved[origin], origin)
+
+        # Broadcast fades: emit each group wire when that group's fading members agree
+        if 255 in involved:
+            addrs = involved[255]
+            for group_num in sorted(self.groups):
+                _append_agreed_group(group_num, addrs, 64 + group_num)
 
         return changes
 

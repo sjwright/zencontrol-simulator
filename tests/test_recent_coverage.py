@@ -282,6 +282,53 @@ async def test_live_dim_time_scene_fades(live_protocol, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Button LED stubs
+# ---------------------------------------------------------------------------
+
+
+def test_query_operating_mode_default_zero():
+    from zencontrol_simulator.protocol import ErrorCode
+
+    disp, _, _ = _disp()
+    req = parse_request(_basic(CMD["QUERY_OPERATING_MODE_BY_ADDRESS"], address=0))
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ANSWER
+    assert resp[2] == 1 and resp[3] == 0x00  # docs default operating mode
+
+    req = parse_request(_basic(CMD["QUERY_OPERATING_MODE_BY_ADDRESS"], address=64))
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ANSWER and resp[3] == 0x00
+
+    req = parse_request(_basic(CMD["QUERY_OPERATING_MODE_BY_ADDRESS"], address=63))
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ERROR and resp[3] == ErrorCode.UNKNOWN_TARGET
+
+
+def test_override_button_led_returns_ok():
+    disp, _, _ = _disp()
+    # ECD 0 wire 64, instance 0, LED on (0x02) — response ignores payload
+    req = parse_request(_basic(CMD["OVERRIDE_DALI_BUTTON_LED_STATE"], address=64, d1=0x02, d2=0))
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.OK
+    assert resp[2] == 0  # no data
+
+
+def test_query_last_known_button_led_returns_off():
+    disp, _, _ = _disp()
+    req = parse_request(
+        _basic(CMD["QUERY_LAST_KNOWN_DALI_BUTTON_LED_STATE"], address=64, d2=0)
+    )
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ANSWER
+    assert resp[2] == 1 and resp[3] == 0x01  # Instance Binary State Off (docs example)
+
+
+# ---------------------------------------------------------------------------
 # Group scene companion events (scene + level + colour)
 # ---------------------------------------------------------------------------
 

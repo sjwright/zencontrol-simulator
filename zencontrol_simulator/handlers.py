@@ -52,6 +52,9 @@ CMD = {
     "QUERY_CONTROLLER_FITTING_NUMBER": 0x25,
     "QUERY_IS_DALI_READY": 0x26,
     "QUERY_CONTROLLER_STARTUP_COMPLETE": 0x27,
+    "QUERY_OPERATING_MODE_BY_ADDRESS": 0x28,
+    "OVERRIDE_DALI_BUTTON_LED_STATE": 0x29,
+    "QUERY_LAST_KNOWN_DALI_BUTTON_LED_STATE": 0x30,
     "DALI_ADD_TPI_EVENT_FILTER": 0x31,
     "QUERY_DALI_TPI_EVENT_FILTERS": 0x32,
     "DALI_CLEAR_TPI_EVENT_FILTERS": 0x33,
@@ -180,6 +183,14 @@ class CommandDispatcher:
                   lambda r: _ok(r.seq) if w.startup_complete else _no_answer(r.seq))
         self._reg(CMD["QUERY_IS_DALI_READY"],
                   lambda r: _ok(r.seq) if w.dali_ready else _no_answer(r.seq))
+        # Operating mode: always default 0 (no manufacturer modes modelled)
+        self._reg(CMD["QUERY_OPERATING_MODE_BY_ADDRESS"], self._query_operating_mode)
+        # Button LED: static stubs (no physical LED model)
+        self._reg(CMD["OVERRIDE_DALI_BUTTON_LED_STATE"], lambda r: _ok(r.seq))
+        self._reg(
+            CMD["QUERY_LAST_KNOWN_DALI_BUTTON_LED_STATE"],
+            lambda r: _answer(r.seq, bytes([0x01])),  # Instance Binary State Off
+        )
 
         self._reg(CMD["QUERY_TPI_EVENT_EMIT_STATE"],
                   lambda r: _answer(r.seq, bytes([w.event_mode & 0xFF])))
@@ -457,6 +468,12 @@ class CommandDispatcher:
         if 64 <= wire <= 127:
             return self.world.device(wire - 64)
         return None
+
+    def _query_operating_mode(self, request: Request) -> bytes:
+        # Docs default operating mode is 0; missing device → UNKNOWN_TARGET
+        if self._ecg_or_ecd(self._addr(request)) is None:
+            return self._unknown_target(request.seq)
+        return _answer(request.seq, bytes([0x00]))
 
     def _query_device_label(self, request: Request) -> bytes:
         obj = self._ecg_or_ecd(self._addr(request))
