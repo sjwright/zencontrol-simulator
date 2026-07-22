@@ -278,11 +278,9 @@ async def test_system_variables(live_protocol):
     assert await p.set_system_variable(c, 0, 9) is True
     assert await p.query_system_variable(c, 0) == 9
     assert live_protocol.world.system_variables[0].value == 9
-    # Unknown IDs rejected (library raises on TPI ERROR)
-    from zencontrol.exceptions import ZenResponseError
-
-    with pytest.raises(ZenResponseError):
-        await p.set_system_variable(c, 99, 1)
+    # Unknown IDs rejected — library soft-fails TPI ERROR as None
+    assert await p.set_system_variable(c, 99, 1) is None
+    assert 99 not in live_protocol.world.system_variables
 
 
 # ---------------------------------------------------------------------------
