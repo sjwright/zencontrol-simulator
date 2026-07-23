@@ -1,60 +1,12 @@
 # Zencontrol TPI Advanced Simulator
 
-Mostly vibe-coded 
-UDP/TCP simulator of a Zencontrol controller for developing TPI Advanced
-protocol implementations without hardware.
+This is a substantially AI-coded UDP/TCP simulator of a Zencontrol controller,
+suitable for developing and testing TPI Advanced protocol implementations.
 
-See below for a table of feature completeness. Built in concert with
-the human-coded
-[`zencontrol-python`](https://github.com/sjwright/zencontrol-python)
-protocol implementation and the partially vibe-coded
-[`zencontrol-homeassistant`](https://github.com/sjwright/zencontrol-homeassistant)
-Home Assistant integration.
-
-What follows is mostly AI slop documentation, but the tables are
-human-refined and generally quite accurate.
-
-## Behaviour
-
-- Listens for TPI Advanced commands on **UDP and TCP port 5108** (configurable);
-  TCP accepts up to **5** concurrent sessions (PDF limit) with stream reassembly
-- Emits an `IS_OCCUPIED` (0x06) multicast heartbeat every **5 seconds** by default
-(`heartbeat_interval`; `0` disables). Useful for discovery; zencontrol-python
-treats each pulse as motion, so occupancy stay held while it runs
-- Answers discovery/query commands from a YAML world model
-- Control commands **mutate in-memory state** (levels, colour, scenes, profile,
-system variables) and emit matching TPI events on multicast
-`239.255.90.67:6969` (or unicast if the client configures it)
-- Queries reflect live in-memory state (not persisted across restarts)
-- Group/broadcast control also emits **per-member** level/scene/colour events so
-HA light entities stay in sync without waiting for refresh
-- Event targets by address: **ECG** → that ECG only; **group** → members + group
-  wire when destinations agree; **broadcast** → every ECG + each group wire when
-  that group’s members agree. ECG commands clear parent `last_scene_current` but
-  do not emit parent-group events
-- Group/broadcast scene recall emits `SCENE_CHANGE`, `LEVEL_CHANGE_V2`, and
-  `COLOUR_CHANGE` for members and (when agreed) the group wire
-- `controller.dim_time_ms` applies a fade on scene recall; when greater than
-  2000ms the simulator re-emits `LEVEL_CHANGE_V2` about every 500ms (current,
-  destination) until complete — including agreed group wires for group- and
-  broadcast-origin fades
-- `DALI_CUSTOM_FADE` interpolates for `QUERY_LEVEL` while `fade_running` is set;
-`LEVEL_CHANGE_V2` still carries the destination; long custom fades also get the
-~500ms progress ticks; `DALI_STOP_FADE` freezes at the mid-fade level and emits
-`LEVEL_CHANGE_V2` with the frozen level
-- `DALI_QUERY_MIN_LEVEL` / `MAX_LEVEL` / `FADE_RUNNING` are implemented
-- `DALI_INHIBIT` stores a timed inhibit flag on targets (no TPI event; no
-  sensor→load automation)
-- System variable SET only updates IDs present in YAML (no auto-create)
-- System variables with `simulate: <max>` track a daylight sine (0 at midnight,
-  max at midday), refreshed every 30 seconds with a `SYSTEM_VARIABLE_CHANGED` event
-- Occupancy `last_detect` is computed from a wall-clock last-motion timestamp
-(config `last_detect` means “N seconds ago at load”)
-- Empty labels return `NO_ANSWER` (not an empty string) so
-`generic_if_none` clients behave like hardware
-- Bad checksum / malformed frames get an `ERROR` reply when a sequence number
-is available
-- Unknown DALI targets return `ERROR_UNKNOWN_TARGET`
+Although it is substantially AI-coded, it has been tested against the
+human-coded [`zencontrol-python`](https://github.com/sjwright/zencontrol-python)
+protocol implementation, and a test suite which is known to work against physical
+hardware.
 
 ## Quick start
 
