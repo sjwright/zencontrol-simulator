@@ -14,7 +14,7 @@ from zencontrol_simulator.world import World, load_world
 CONFIG = Path(__file__).resolve().parents[1] / "config.yaml"
 
 
-@dataclass
+@dataclass(slots=True)
 class LiveProtocol:
     """Running simulator paired with a zencontrol-python ZenProtocol client."""
 

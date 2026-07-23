@@ -7,8 +7,6 @@ Conventions (matching real controllers / existing simulator behaviour):
 - INHIBIT: mutates state only (no TPI event code)
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

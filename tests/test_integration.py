@@ -1,7 +1,5 @@
 """Live discovery smoke test against zencontrol-python (optional)."""
 
-from __future__ import annotations
-
 import asyncio
 from pathlib import Path
 

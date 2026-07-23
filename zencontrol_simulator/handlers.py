@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from .events import EventEmitter
 from .protocol import ErrorCode, Request, ResponseType, build_response, command_name
 from .world import (
     Colour,
+    Device,
     EventFilter,
+    Group,
     Light,
     World,
     bitmap_from_addresses,
@@ -21,7 +23,10 @@ from .world import (
 
 logger = logging.getLogger(__name__)
 
-Handler = Callable[[Request], bytes]
+type Handler = Callable[[Request], bytes]
+type LevelAction = Callable[[int], None]
+type LightAction = Callable[[Light], bytes]
+type DeviceOrLightAction = Callable[[Light | Device], bytes]
 
 # Opcodes actually exercised by zencontrol-python's interface layer
 # (what zencontrol-tpi uses). Anything else returns UNKNOWN_CMD.
@@ -285,29 +290,28 @@ class CommandDispatcher:
             return None if self.world.group(wire - 64) is not None else self._unknown_target(seq)
         return self._unknown_target(seq)
 
-    def _with_level_target(self, request: Request, action) -> bytes:
+    def _with_level_target(self, request: Request, action: LevelAction) -> bytes:
         """Validate ECG/group/broadcast wire, run action(wire), return OK."""
         wire = self._addr(request)
-        err = self._check_level_target(request.seq, wire)
-        if err is not None:
+        if (err := self._check_level_target(request.seq, wire)) is not None:
             return err
         action(wire)
         return _ok(request.seq)
 
-    def _with_light(self, request: Request, action) -> bytes:
+    def _with_light(self, request: Request, action: LightAction) -> bytes:
         """Run action(light) for an ECG address, else NO_ANSWER."""
         light = self.world.light(self._addr(request))
         if light is None:
             return _no_answer(request.seq)
         return action(light)
 
-    def _with_ecg_or_ecd(self, request: Request, action) -> bytes:
+    def _with_ecg_or_ecd(self, request: Request, action: DeviceOrLightAction) -> bytes:
         obj = self._ecg_or_ecd(self._addr(request))
         if obj is None:
             return _no_answer(request.seq)
         return action(obj)
 
-    def _level_for_wire(self, wire: int) -> Optional[int]:
+    def _level_for_wire(self, wire: int) -> int | None:
         if wire <= 63:
             light = self.world.light(wire)
             return light.visible_level() if light else None
@@ -315,19 +319,19 @@ class CommandDispatcher:
             return self.world.group_level(wire - 64)
         return None
 
-    def _light_or_group(self, wire: int):
+    def _light_or_group(self, wire: int) -> Light | Group | None:
         if wire <= 63:
             return self.world.light(wire)
         if 64 <= wire <= 79:
             return self.world.group(wire - 64)
         return None
 
-    def _ecd(self, wire: int):
+    def _ecd(self, wire: int) -> Device | None:
         if not 64 <= wire <= 127:
             return None
         return self.world.device(wire - 64)
 
-    def _ecg_or_ecd(self, wire: int):
+    def _ecg_or_ecd(self, wire: int) -> Light | Device | None:
         if wire <= 63:
             return self.world.light(wire)
         if 64 <= wire <= 127:

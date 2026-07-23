@@ -7,7 +7,7 @@ name = "zencontrol-simulator"
 version = "0.1.0"
 description = "UDP simulator for Zencontrol TPI Advanced controllers."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 license = "MIT"
 authors = [
     {name = "Simon Wright"},
@@ -37,3 +37,10 @@ zencontrol_simulator = ["config.yaml"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["ASYNC", "B", "E", "F", "I", "UP"]

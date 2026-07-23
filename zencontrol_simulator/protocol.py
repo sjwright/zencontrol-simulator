@@ -59,7 +59,7 @@ def checksum(buf: bytes | bytearray) -> int:
     return acc & 0xFF
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Request:
     seq: int
     command: int
@@ -67,7 +67,7 @@ class Request:
     raw: bytes
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ParseFailure:
     """Request could not be accepted; optionally reply with an ERROR frame."""
 

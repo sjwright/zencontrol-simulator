@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import socket
-from typing import Optional
 
 from .events import EventEmitter
 from .handlers import CommandDispatcher
@@ -19,9 +18,10 @@ from .protocol import (
     parse_request,
 )
 from .world import (
-    SYSVAR_SIMULATE_INTERVAL,
     FADE_PROGRESS_INTERVAL_S,
+    SYSVAR_SIMULATE_INTERVAL,
     Colour,
+    LevelChange,
     World,
     daylight_sine_value,
 )
@@ -44,7 +44,7 @@ def dispatch_request(dispatcher: CommandDispatcher, data: bytes) -> bytes | None
 class SimulatorProtocol(asyncio.DatagramProtocol):
     def __init__(self, dispatcher: CommandDispatcher) -> None:
         self.dispatcher = dispatcher
-        self.transport: Optional[asyncio.DatagramTransport] = None
+        self.transport: asyncio.DatagramTransport | None = None
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = transport  # type: ignore[assignment]
@@ -70,14 +70,14 @@ class Simulator:
         self.world = world
         self.events = EventEmitter(world)
         self.dispatcher = CommandDispatcher(world, self.events)
-        self._transport: Optional[asyncio.DatagramTransport] = None
-        self._protocol: Optional[SimulatorProtocol] = None
-        self._tcp_server: Optional[asyncio.Server] = None
+        self._transport: asyncio.DatagramTransport | None = None
+        self._protocol: SimulatorProtocol | None = None
+        self._tcp_server: asyncio.Server | None = None
         self._tcp_sessions = 0
-        self._stop: Optional[asyncio.Event] = None
-        self._heartbeat_task: Optional[asyncio.Task[None]] = None
-        self._sysvar_sim_task: Optional[asyncio.Task[None]] = None
-        self._fade_progress_task: Optional[asyncio.Task[None]] = None
+        self._stop: asyncio.Event | None = None
+        self._heartbeat_task: asyncio.Task[None] | None = None
+        self._sysvar_sim_task: asyncio.Task[None] | None = None
+        self._fade_progress_task: asyncio.Task[None] | None = None
 
     @property
     def bind_port(self) -> int:
@@ -265,7 +265,7 @@ class Simulator:
             for var_id, value in changed:
                 logger.debug("Simulated system variable %s → %s", var_id, value)
 
-    def tick_fade_progress(self) -> list[tuple[int, int, int]]:
+    def tick_fade_progress(self) -> list[LevelChange]:
         """Emit LEVEL_CHANGE_V2 progress/completion for active fades; return emitted tuples."""
         changes = self.world.collect_fade_progress()
         self.events.emit_level_changes(changes)
@@ -279,7 +279,7 @@ class Simulator:
     async def run_forever(self, *, interactive: bool = False) -> None:
         await self.start()
         self._stop = asyncio.Event()
-        console_task: Optional[asyncio.Task[None]] = None
+        console_task: asyncio.Task[None] | None = None
         try:
             if interactive:
                 console_task = asyncio.create_task(self._interactive_console())
@@ -320,10 +320,8 @@ class Simulator:
         self.world.current_profile = profile_id
         self.events.profile_change(profile_id)
 
-    def inject_colour(self, wire: int, colour) -> None:
+    def inject_colour(self, wire: int, colour: Colour) -> None:
         """Mutate + emit COLOUR_CHANGE as if DALI_COLOUR was received."""
-        if not isinstance(colour, Colour):
-            raise TypeError("colour must be a Colour instance")
         self.events.apply_and_emit_colour(wire, colour)
 
     async def _interactive_console(self) -> None:
@@ -370,79 +368,59 @@ class Simulator:
 
     def _handle_console_line(self, line: str) -> None:
         parts = line.split()
-        cmd = parts[0].lower()
-        if cmd in ("quit", "exit", "q"):
-            if self._stop is not None:
-                self._stop.set()
-            return
-        if cmd in ("help", "?"):
-            print(
-                "Commands:\n"
-                "  button <ecd> <instance>\n"
-                "  hold <ecd> <instance>\n"
-                "  occupy <ecd> <instance> [0|1]\n"
-                "  level <wire> <0-254>     # ECG 0-63, group 64-79, broadcast 255\n"
-                "  scene <wire> <0-11>\n"
-                "  colour <wire> tc <kelvin>\n"
-                "  colour <wire> rgb <r> <g> <b>\n"
-                "  profile <id>\n"
-                "  stats\n"
-                "  quit"
-            )
-            return
-        if cmd == "stats":
-            print(
-                f"requests={self.dispatcher.request_count} "
-                f"errors={self.dispatcher.error_count} "
-                f"events={self.events.sent_count} "
-                f"tcp={self._tcp_sessions}/{MAX_TCP_SESSIONS} "
-                f"mode=0x{self.world.event_mode:02x} "
-                f"profile={self.world.current_profile}"
-            )
-            return
-        if cmd == "button" and len(parts) == 3:
-            self.inject_button_press(int(parts[1]), int(parts[2]))
-            return
-        if cmd == "hold" and len(parts) == 3:
-            self.inject_button_hold(int(parts[1]), int(parts[2]))
-            return
-        if cmd in ("occupy", "occupancy") and len(parts) in (3, 4):
-            occupied = True if len(parts) == 3 else bool(int(parts[3]))
-            self.inject_occupancy(int(parts[1]), int(parts[2]), occupied=occupied)
-            return
-        if cmd == "level" and len(parts) == 3:
-            self.inject_level(int(parts[1]), int(parts[2]))
-            return
-        if cmd == "scene" and len(parts) == 3:
-            self.inject_scene(int(parts[1]), int(parts[2]))
-            return
-        if cmd == "colour" and len(parts) >= 4:
-            wire = int(parts[1])
-            kind = parts[2].lower()
-            if kind == "tc" and len(parts) == 4:
-                self.inject_colour(wire, Colour(type="tc", kelvin=int(parts[3])))
-                return
-            if kind == "rgb" and len(parts) == 6:
-                self.inject_colour(
-                    wire,
-                    Colour(
-                        type="rgbwaf",
-                        r=int(parts[3]),
-                        g=int(parts[4]),
-                        b=int(parts[5]),
-                        w=0,
-                        a=0,
-                        f=0,
-                    ),
+        match [parts[0].lower(), *parts[1:]]:
+            case ["quit" | "exit" | "q"]:
+                if self._stop is not None:
+                    self._stop.set()
+            case ["help" | "?"]:
+                print(
+                    "Commands:\n"
+                    "  button <ecd> <instance>\n"
+                    "  hold <ecd> <instance>\n"
+                    "  occupy <ecd> <instance> [0|1]\n"
+                    "  level <wire> <0-254>     # ECG 0-63, group 64-79, broadcast 255\n"
+                    "  scene <wire> <0-11>\n"
+                    "  colour <wire> tc <kelvin>\n"
+                    "  colour <wire> rgb <r> <g> <b>\n"
+                    "  profile <id>\n"
+                    "  stats\n"
+                    "  quit"
                 )
-                return
-        if cmd == "profile" and len(parts) == 2:
-            self.inject_profile(int(parts[1]))
-            return
-        raise ValueError(f"Unknown command: {line!r} (try 'help')")
+            case ["stats"]:
+                print(
+                    f"requests={self.dispatcher.request_count} "
+                    f"errors={self.dispatcher.error_count} "
+                    f"events={self.events.sent_count} "
+                    f"tcp={self._tcp_sessions}/{MAX_TCP_SESSIONS} "
+                    f"mode=0x{self.world.event_mode:02x} "
+                    f"profile={self.world.current_profile}"
+                )
+            case ["button", ecd, instance]:
+                self.inject_button_press(int(ecd), int(instance))
+            case ["hold", ecd, instance]:
+                self.inject_button_hold(int(ecd), int(instance))
+            case ["occupy" | "occupancy", ecd, instance]:
+                self.inject_occupancy(int(ecd), int(instance), occupied=True)
+            case ["occupy" | "occupancy", ecd, instance, flag]:
+                self.inject_occupancy(int(ecd), int(instance), occupied=bool(int(flag)))
+            case ["level", wire, level]:
+                self.inject_level(int(wire), int(level))
+            case ["scene", wire, scene]:
+                self.inject_scene(int(wire), int(scene))
+            case ["colour", wire, "tc", kelvin]:
+                self.inject_colour(int(wire), Colour(type="tc", kelvin=int(kelvin)))
+            case ["colour", wire, "rgb", r, g, b]:
+                self.inject_colour(
+                    int(wire),
+                    Colour(type="rgbwaf", r=int(r), g=int(g), b=int(b), w=0, a=0, f=0),
+                )
+            case ["profile", profile_id]:
+                self.inject_profile(int(profile_id))
+            case _:
+                raise ValueError(f"Unknown command: {line!r} (try 'help')")
 
 
-def sys_stdin_readline() -> Optional[str]:
+def sys_stdin_readline() -> str | None:
     try:
         return input()
     except EOFError:

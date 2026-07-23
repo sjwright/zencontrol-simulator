@@ -5,14 +5,19 @@ from __future__ import annotations
 import logging
 import math
 import time
+from collections.abc import Callable
 from copy import copy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Literal
 
 import yaml
 
 from .protocol import mac_from_string
+
+type ColourKind = Literal["tc", "rgbwaf", "xy"]
+type LevelChooser = Callable[[Light], int]
+type LevelChange = tuple[int, int, int]  # wire, previous/current, destination
 
 
 INSTANCE_TYPES = {
@@ -58,12 +63,12 @@ def _is_inhibited_until(holder: Any) -> bool:
     return True
 
 
-def destination_level(light: "Light") -> int:
+def destination_level(light: Light) -> int:
     """Arc destination after a command (fade target while fading, else current)."""
     return light.fade_to if light.fade_to is not None else light.level
 
 
-def scene_colour_bytes(light: "Light", scene: int) -> Optional[bytes]:
+def scene_colour_bytes(light: Light, scene: int) -> bytes | None:
     """COLOUR_CHANGE payload when this scene defines colour data on the light."""
     if (
         0 <= scene < len(light.scene_colours)
@@ -74,7 +79,7 @@ def scene_colour_bytes(light: "Light", scene: int) -> Optional[bytes]:
     return None
 
 
-@dataclass
+@dataclass(slots=True)
 class SceneEffects:
     """Companion TPI events implied by a scene recall.
 
@@ -84,72 +89,64 @@ class SceneEffects:
     """
 
     scenes: list[int] = field(default_factory=list)
-    levels: list[tuple[int, int, int]] = field(default_factory=list)
+    levels: list[LevelChange] = field(default_factory=list)
     colours: list[tuple[int, bytes]] = field(default_factory=list)
 
-    def add_ecg(self, light: "Light", scene: int, prev_level: int) -> None:
+    def add_ecg(self, light: Light, scene: int, prev_level: int) -> None:
         """Record SCENE/LEVEL/COLOUR for one control gear after it was mutated."""
         wire = light.address
         self.scenes.append(wire)
         self.levels.append((wire, prev_level, destination_level(light)))
-        blob = scene_colour_bytes(light, scene)
-        if blob is not None:
+        if (blob := scene_colour_bytes(light, scene)) is not None:
             self.colours.append((wire, blob))
 
 
-@dataclass
+@dataclass(slots=True)
 class Colour:
-    type: str  # tc | rgbwaf | xy
-    kelvin: Optional[int] = None
-    r: Optional[int] = None
-    g: Optional[int] = None
-    b: Optional[int] = None
-    w: Optional[int] = None
-    a: Optional[int] = None
-    f: Optional[int] = None
-    x: Optional[int] = None
-    y: Optional[int] = None
+    type: ColourKind
+    kelvin: int | None = None
+    r: int | None = None
+    g: int | None = None
+    b: int | None = None
+    w: int | None = None
+    a: int | None = None
+    f: int | None = None
+    x: int | None = None
+    y: int | None = None
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> Optional["Colour"]:
-        if not data:
-            return None
-        kind = data[0]
-        if kind == 0x20 and len(data) >= 3:
-            return cls(type="tc", kelvin=(data[1] << 8) | data[2])
-        if kind == 0x80 and len(data) >= 7:
-            return cls(
-                type="rgbwaf",
-                r=data[1], g=data[2], b=data[3],
-                w=data[4], a=data[5], f=data[6],
-            )
-        if kind == 0x10 and len(data) >= 5:
-            return cls(
-                type="xy",
-                x=(data[1] << 8) | data[2],
-                y=(data[3] << 8) | data[4],
-            )
-        return None
+    def from_bytes(cls, data: bytes) -> Colour | None:
+        match list(data):
+            case [0x20, hi, lo, *_]:
+                return cls(type="tc", kelvin=(hi << 8) | lo)
+            case [0x80, r, g, b, w, a, f, *_]:
+                return cls(type="rgbwaf", r=r, g=g, b=b, w=w, a=a, f=f)
+            case [0x10, xh, xl, yh, yl, *_]:
+                return cls(type="xy", x=(xh << 8) | xl, y=(yh << 8) | yl)
+            case _:
+                return None
 
     def to_bytes(self) -> bytes:
-        if self.type == "tc":
-            k = self.kelvin or 3000
-            return bytes([0x20, (k >> 8) & 0xFF, k & 0xFF])
-        if self.type == "rgbwaf":
-            return bytes([
-                0x80,
-                self.r or 0,
-                self.g or 0,
-                self.b or 0,
-                self.w or 0,
-                self.a or 0,
-                self.f or 0,
-            ])
-        if self.type == "xy":
-            x = self.x or 0
-            y = self.y or 0
-            return bytes([0x10, (x >> 8) & 0xFF, x & 0xFF, (y >> 8) & 0xFF, y & 0xFF])
-        return b""
+        match self.type:
+            case "tc":
+                k = self.kelvin or 3000
+                return bytes([0x20, (k >> 8) & 0xFF, k & 0xFF])
+            case "rgbwaf":
+                return bytes([
+                    0x80,
+                    self.r or 0,
+                    self.g or 0,
+                    self.b or 0,
+                    self.w or 0,
+                    self.a or 0,
+                    self.f or 0,
+                ])
+            case "xy":
+                x = self.x or 0
+                y = self.y or 0
+                return bytes([0x10, (x >> 8) & 0xFF, x & 0xFF, (y >> 8) & 0xFF, y & 0xFF])
+            case _:
+                return b""
 
     def to_scene_blob(self) -> bytes:
         """Pad/truncate to 7 bytes for colour scene queries (PDF: unused bytes 0xFF)."""
@@ -159,7 +156,7 @@ class Colour:
         return raw + bytes([0xFF] * (7 - len(raw)))
 
 
-@dataclass
+@dataclass(slots=True)
 class ColourFeatures:
     supports_xy: bool = False
     supports_tunable: bool = False
@@ -177,7 +174,7 @@ class ColourFeatures:
         return value
 
 
-@dataclass
+@dataclass(slots=True)
 class ColourTempLimits:
     physical_warmest: int = 2700
     physical_coolest: int = 6500
@@ -199,7 +196,7 @@ class ColourTempLimits:
         return bytes(out)
 
 
-@dataclass
+@dataclass(slots=True)
 class Light:
     address: int
     label: str
@@ -211,19 +208,19 @@ class Light:
     last_scene: int = 0
     last_scene_current: bool = False
     cg_types: list[int] = field(default_factory=list)
-    colour: Optional[Colour] = None
+    colour: Colour | None = None
     colour_features: ColourFeatures = field(default_factory=ColourFeatures)
-    colour_temp_limits: Optional[ColourTempLimits] = None
+    colour_temp_limits: ColourTempLimits | None = None
     groups: list[int] = field(default_factory=list)
-    scene_levels: list[Optional[int]] = field(default_factory=lambda: [None] * 12)
-    scene_colours: list[Optional[Colour]] = field(default_factory=lambda: [None] * 12)
+    scene_levels: list[int | None] = field(default_factory=lambda: [None] * 12)
+    scene_colours: list[Colour | None] = field(default_factory=lambda: [None] * 12)
     status: int = 0x00
-    fading_until: Optional[float] = None
-    fade_from: Optional[int] = None
-    fade_to: Optional[int] = None
-    fade_started_at: Optional[float] = None
-    fade_origin: Optional[int] = None  # wire that started the custom fade
-    inhibited_until: Optional[float] = None
+    fading_until: float | None = None
+    fade_from: int | None = None
+    fade_to: int | None = None
+    fade_started_at: float | None = None
+    fade_origin: int | None = None  # wire that started the custom fade
+    inhibited_until: float | None = None
 
     def _set_lamp_on(self, on: bool) -> None:
         if on:
@@ -286,7 +283,7 @@ class Light:
         level: int,
         *,
         fading_seconds: float = 0,
-        fade_origin: Optional[int] = None,
+        fade_origin: int | None = None,
     ) -> None:
         level = max(0, min(254, int(level)))
         from_level = self.visible_level()
@@ -323,7 +320,7 @@ class Light:
         scene: int,
         *,
         fading_seconds: float = 0,
-        fade_origin: Optional[int] = None,
+        fade_origin: int | None = None,
     ) -> None:
         self.last_scene = scene & 0xFF
         self.last_scene_current = True
@@ -339,7 +336,7 @@ class Light:
             self.last_scene_current = True
 
 
-@dataclass
+@dataclass(slots=True)
 class Group:
     number: int
     label: str
@@ -347,7 +344,7 @@ class Group:
     last_scene: int = 0
     last_scene_current: bool = False
     scenes: dict[int, str] = field(default_factory=dict)
-    inhibited_until: Optional[float] = None
+    inhibited_until: float | None = None
 
     def set_level(self, level: int) -> None:
         self.level = max(0, min(254, int(level)))
@@ -360,7 +357,7 @@ class Group:
         return _is_inhibited_until(self)
 
 
-@dataclass
+@dataclass(slots=True)
 class InstanceTimers:
     """Occupancy timers. Wire `last_detect` is seconds since last motion."""
 
@@ -376,17 +373,17 @@ class InstanceTimers:
         self.last_motion_at = time.time()
 
 
-@dataclass
+@dataclass(slots=True)
 class Instance:
     number: int
     type: int
     label: str = ""
-    timers: Optional[InstanceTimers] = None
+    timers: InstanceTimers | None = None
     active: bool = True
     error: bool = False
 
 
-@dataclass
+@dataclass(slots=True)
 class Device:
     address: int
     label: str
@@ -394,22 +391,22 @@ class Device:
     instances: list[Instance] = field(default_factory=list)
 
 
-@dataclass
+@dataclass(slots=True)
 class Profile:
     number: int
     label: str
 
 
-@dataclass
+@dataclass(slots=True)
 class SystemVariable:
     id: int
     name: str
     value: int = 0
     # If set, value tracks a daylight sine (0 at midnight → simulate at midday).
-    simulate: Optional[int] = None
+    simulate: int | None = None
 
 
-def daylight_sine_value(maximum: int, *, seconds_since_midnight: Optional[float] = None) -> int:
+def daylight_sine_value(maximum: int, *, seconds_since_midnight: float | None = None) -> int:
     """Map local time of day onto ``[0, maximum]`` with a raised cosine.
 
     Midnight → 0, midday → *maximum*, next midnight → 0.
@@ -425,14 +422,14 @@ def daylight_sine_value(maximum: int, *, seconds_since_midnight: Optional[float]
     return int(round(maximum * (1.0 - math.cos(phase)) / 2.0))
 
 
-@dataclass
+@dataclass(slots=True)
 class EventFilter:
     address: int
     instance: int
     mask: int
 
 
-@dataclass
+@dataclass(slots=True)
 class World:
     """YAML-backed controller world with mutable runtime TPI state."""
 
@@ -451,38 +448,35 @@ class World:
     last_scheduled_profile: int
     system_variables: dict[int, SystemVariable]
     event_mode: int = 0x01
-    unicast_ip: Optional[str] = None
+    unicast_ip: str | None = None
     unicast_port: int = 0
     event_filters: list[EventFilter] = field(default_factory=list)
     # Emit IS_OCCUPIED (0x06) multicast keepalive for discovery; 0 disables.
     heartbeat_interval: float = 5.0
-    heartbeat_ecd: Optional[int] = None
-    heartbeat_instance: Optional[int] = None
+    heartbeat_ecd: int | None = None
+    heartbeat_instance: int | None = None
     # Default fade for scene recalls (milliseconds). Real controllers re-emit
     # LEVEL_CHANGE_V2 every ~500ms while fading when this is greater than 2000.
     dim_time_ms: int = 0
     # First segment of fitting numbers (PDF QUERY_CONTROLLER_FITTING_NUMBER / defaults).
     fitting_number: str = "1"
 
-    def light(self, address: int) -> Optional[Light]:
+    def light(self, address: int) -> Light | None:
         return self.lights.get(address)
 
-    def group(self, number: int) -> Optional[Group]:
+    def group(self, number: int) -> Group | None:
         return self.groups.get(number)
 
-    def device(self, address: int) -> Optional[Device]:
+    def device(self, address: int) -> Device | None:
         return self.devices.get(address)
 
-    def instance(self, ecd: int, number: int) -> Optional[Instance]:
+    def instance(self, ecd: int, number: int) -> Instance | None:
         device = self.devices.get(ecd)
         if device is None:
             return None
-        for inst in device.instances:
-            if inst.number == number:
-                return inst
-        return None
+        return next((inst for inst in device.instances if inst.number == number), None)
 
-    def first_occupancy(self) -> Optional[tuple[int, int]]:
+    def first_occupancy(self) -> tuple[int, int] | None:
         """Return (ecd, instance) for the first occupancy sensor, if any."""
         for ecd in sorted(self.devices):
             for inst in self.devices[ecd].instances:
@@ -490,7 +484,7 @@ class World:
                     return (ecd, inst.number)
         return None
 
-    def heartbeat_target(self) -> Optional[tuple[int, int]]:
+    def heartbeat_target(self) -> tuple[int, int] | None:
         """Resolve configured or first occupancy sensor for the heartbeat."""
         if self.heartbeat_ecd is not None and self.heartbeat_instance is not None:
             inst = self.instance(self.heartbeat_ecd, self.heartbeat_instance)
@@ -502,7 +496,7 @@ class World:
     def lights_in_group(self, group_number: int) -> list[Light]:
         return [lt for lt in self.lights.values() if group_number in lt.groups]
 
-    def group_level(self, group_number: int) -> Optional[int]:
+    def group_level(self, group_number: int) -> int | None:
         """Return group arc level, or 255 if members disagree (mixed)."""
         members = self.lights_in_group(group_number)
         group = self.groups.get(group_number)
@@ -513,7 +507,7 @@ class World:
             return next(iter(levels))
         return 255
 
-    def agreed_member_colour(self, group_number: int) -> Optional[Colour]:
+    def agreed_member_colour(self, group_number: int) -> Colour | None:
         """Return member colour when all coloured members agree; else None."""
         colours = [
             m.colour for m in self.lights_in_group(group_number)
@@ -526,7 +520,7 @@ class World:
             return None
         return colours[0]
 
-    def agreed_group_level(self, group_number: int) -> Optional[int]:
+    def agreed_group_level(self, group_number: int) -> int | None:
         """Member arc when unanimous; None if empty/missing/mixed (255)."""
         level = self.group_level(group_number)
         if level is None or level == 255:
@@ -542,7 +536,7 @@ class World:
 
     def sync_group_level(
         self, group: Group, *, clear_scene_if_mixed: bool = False
-    ) -> Optional[int]:
+    ) -> int | None:
         """Store agreed member level on the group; optionally clear scene-current if mixed."""
         level = self.agreed_group_level(group.number)
         if level is not None:
@@ -553,7 +547,7 @@ class World:
         return None
 
     def invalidate_groups_sharing(
-        self, lights: list[Light], *, except_group: Optional[int] = None
+        self, lights: list[Light], *, except_group: int | None = None
     ) -> None:
         """Clear last_scene_current on groups that share these lights (siblings too)."""
         seen: set[int] = set()
@@ -574,10 +568,10 @@ class World:
 
     def apply_level(
         self, wire: int, level: int, *, fading_seconds: int = 0
-    ) -> list[tuple[int, int, int]]:
+    ) -> list[LevelChange]:
         """Apply level; return list of (wire, previous, new) for events."""
         level = max(0, min(254, int(level)))
-        changes: list[tuple[int, int, int]] = []
+        changes: list[LevelChange] = []
         if wire == 255:
             for light in self.lights.values():
                 prev = light.visible_level()
@@ -617,12 +611,12 @@ class World:
     def apply_per_light_level(
         self,
         wire: int,
-        choose: Callable[[Light], int],
+        choose: LevelChooser,
         *,
         fading_seconds: int = 0,
-    ) -> list[tuple[int, int, int]]:
+    ) -> list[LevelChange]:
         """Apply a per-light level choice; return (wire, previous, new) for events."""
-        changes: list[tuple[int, int, int]] = []
+        changes: list[LevelChange] = []
         if wire == 255:
             for light in self.lights.values():
                 prev = light.visible_level()
@@ -733,9 +727,9 @@ class World:
             return targets
         return []
 
-    def clear_fade(self, wire: int) -> list[tuple[int, int, int]]:
+    def clear_fade(self, wire: int) -> list[LevelChange]:
         """Stop fades started on this wire; return (target, prev_visible, frozen) for events."""
-        changes: list[tuple[int, int, int]] = []
+        changes: list[LevelChange] = []
 
         def _freeze(light: Light, origin: int) -> None:
             if light.fade_origin != origin or light.fading_until is None:
@@ -774,7 +768,7 @@ class World:
             return changes
         return changes
 
-    def collect_fade_progress(self) -> list[tuple[int, int, int]]:
+    def collect_fade_progress(self) -> list[LevelChange]:
         """LEVEL_CHANGE_V2 progress/completion tuples: (wire, current, target).
 
         Mid-fade repeats only when the fade's configured duration exceeds
@@ -782,7 +776,7 @@ class World:
         (current == target) are always emitted when a fade expires.
         """
         now = time.time()
-        pending: list[tuple[Light, int, int, Optional[int]]] = []
+        pending: list[tuple[Light, int, int, int | None]] = []
         for light in self.lights.values():
             if (
                 light.fading_until is None
@@ -800,7 +794,7 @@ class World:
                     (light, light.visible_level(expire=False), int(light.fade_to), origin)
                 )
 
-        changes: list[tuple[int, int, int]] = []
+        changes: list[LevelChange] = []
         involved: dict[int, set[int]] = {}
         for light, current, dest, origin in pending:
             if light.fading_until is not None and now >= light.fading_until:
@@ -920,25 +914,30 @@ def _default_last_active(item: dict[str, Any]) -> int:
     return level if level > 0 else 254
 
 
-def _parse_colour(raw: Any) -> Optional[Colour]:
+def _parse_colour(raw: Any) -> Colour | None:
     if not raw:
         return None
-    return Colour(
-        type=str(raw.get("type", "tc")).lower(),
-        kelvin=raw.get("kelvin"),
-        r=raw.get("r"),
-        g=raw.get("g"),
-        b=raw.get("b"),
-        w=raw.get("w"),
-        a=raw.get("a"),
-        f=raw.get("f"),
-        x=raw.get("x"),
-        y=raw.get("y"),
-    )
+    kind = str(raw.get("type", "tc")).lower()
+    match kind:
+        case "tc" | "rgbwaf" | "xy":
+            return Colour(
+                type=kind,
+                kelvin=raw.get("kelvin"),
+                r=raw.get("r"),
+                g=raw.get("g"),
+                b=raw.get("b"),
+                w=raw.get("w"),
+                a=raw.get("a"),
+                f=raw.get("f"),
+                x=raw.get("x"),
+                y=raw.get("y"),
+            )
+        case _:
+            raise ValueError(f"Unsupported colour type: {kind!r}")
 
 
-def _parse_scene_levels(raw: Any) -> list[Optional[int]]:
-    levels: list[Optional[int]] = [None] * 12
+def _parse_scene_levels(raw: Any) -> list[int | None]:
+    levels: list[int | None] = [None] * 12
     if not raw:
         return levels
     for i, value in enumerate(raw[:12]):
@@ -946,8 +945,8 @@ def _parse_scene_levels(raw: Any) -> list[Optional[int]]:
     return levels
 
 
-def _parse_scene_colours(raw: Any) -> list[Optional[Colour]]:
-    colours: list[Optional[Colour]] = [None] * 12
+def _parse_scene_colours(raw: Any) -> list[Colour | None]:
+    colours: list[Colour | None] = [None] * 12
     if not raw:
         return colours
     for i, value in enumerate(raw[:12]):
@@ -1045,7 +1044,7 @@ def load_world(path: str | Path) -> World:
             seen_inst.add(number)
 
             timers_raw = inst.get("timers")
-            timers: Optional[InstanceTimers] = None
+            timers: InstanceTimers | None = None
             if timers_raw:
                 elapsed = _as_int(timers_raw.get("last_detect"))
                 timers = InstanceTimers(

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import logging
 import socket
-from typing import Optional
 
 from .protocol import EventCode, MULTICAST_GROUP, MULTICAST_PORT, build_event
-from .world import SceneEffects, World
+from .world import Colour, LevelChange, LevelChooser, SceneEffects, World
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,7 @@ class EventEmitter:
     def filtering_enabled(self) -> bool:
         return bool(self.world.event_mode & 0x02)
 
-    def _filtered(self, target: int, event_code: int, instance: Optional[int] = None) -> bool:
+    def _filtered(self, target: int, event_code: int, instance: int | None = None) -> bool:
         if not self.filtering_enabled():
             return False
         wire = target & 0xFFFF
@@ -61,7 +60,7 @@ class EventEmitter:
         target: int,
         event_code: int | EventCode,
         payload: bytes = b"",
-        instance: Optional[int] = None,
+        instance: int | None = None,
     ) -> bool:
         if not self.events_enabled():
             logger.debug("Skip event (emit disabled) code=%s target=%s", event_code, target)
@@ -121,7 +120,7 @@ class EventEmitter:
     def colour_change(self, wire: int, colour_bytes: bytes) -> None:
         self.emit(wire, EventCode.COLOUR_CHANGE, colour_bytes)
 
-    def emit_level_changes(self, changes: list[tuple[int, int, int]]) -> None:
+    def emit_level_changes(self, changes: list[LevelChange]) -> None:
         for wire, previous, new in changes:
             self.level_change(wire, previous, new)
 
@@ -134,8 +133,8 @@ class EventEmitter:
             if wire in levels:
                 prev, dest = levels[wire]
                 self.level_change(wire, prev, dest)
-            if wire in colours:
-                self.colour_change(wire, colours[wire])
+            if (blob := colours.get(wire)) is not None:
+                self.colour_change(wire, blob)
 
     def apply_and_emit_level(
         self, wire: int, level: int, *, fading_seconds: int = 0
@@ -144,10 +143,10 @@ class EventEmitter:
             self.world.apply_level(wire, level, fading_seconds=fading_seconds)
         )
 
-    def apply_and_emit_per_light_level(self, wire: int, choose) -> None:
+    def apply_and_emit_per_light_level(self, wire: int, choose: LevelChooser) -> None:
         self.emit_level_changes(self.world.apply_per_light_level(wire, choose))
 
-    def apply_and_emit_colour(self, wire: int, colour) -> None:
+    def apply_and_emit_colour(self, wire: int, colour: Colour) -> None:
         blob = colour.to_bytes()
         for target in self.world.apply_colour(wire, colour):
             self.colour_change(target, blob)

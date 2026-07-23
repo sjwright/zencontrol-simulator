@@ -5,8 +5,6 @@ touched by the core ECG 0–3 / group 0–1 suite: hallway overlap, switching
 gear, second colour fixtures, ECD pad shapes, and extra system variables.
 """
 
-from __future__ import annotations
-
 import asyncio
 from pathlib import Path
 

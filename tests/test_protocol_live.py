@@ -1,7 +1,5 @@
 """Live protocol-layer tests: zencontrol-python ZenProtocol ↔ simulator."""
 
-from __future__ import annotations
-
 import asyncio
 
 import pytest

@@ -1,7 +1,5 @@
 """Additional tests for state mutation, labels, unicast, and event modes."""
 
-from __future__ import annotations
-
 import asyncio
 import time
 from pathlib import Path

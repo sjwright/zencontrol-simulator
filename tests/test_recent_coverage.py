@@ -4,8 +4,6 @@ Covers: QUERY_GROUP_BY_NUMBER, QUERY_SCENE_NUMBERS_BY_ADDRESS, fitting numbers,
 QUERY_DALI_EAN, dim_time / fade progress ticks, and group-scene companion events.
 """
 
-from __future__ import annotations
-
 import asyncio
 from pathlib import Path
 

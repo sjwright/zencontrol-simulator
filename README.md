@@ -58,6 +58,8 @@ is available
 
 ## Quick start
 
+Requires **Python 3.14+**.
+
 ```bash
 cd zencontrol-simulator
 ./setup-venv.sh                      # creates .venv, installs deps + zencontrol-python

@@ -1,7 +1,5 @@
 """TCP transport and stream-framing tests."""
 
-from __future__ import annotations
-
 import asyncio
 from pathlib import Path
 
