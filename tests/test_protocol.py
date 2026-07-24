@@ -212,6 +212,72 @@ def test_button_inject(dispatcher, monkeypatch):
         events.button_press(0, 2)  # occupancy, not button
 
 
+def test_absolute_input_inject(dispatcher, monkeypatch):
+    _, world, events = dispatcher
+    sent = []
+
+    def capture(target, code, payload=b"", instance=None):
+        sent.append((target, int(code), payload, instance))
+        return True
+
+    monkeypatch.setattr(events, "emit", capture)
+    assert events.absolute_input(13, 0, 0x1234)
+    assert sent[0][0] == 64 + 13
+    assert sent[0][1] == 0x02
+    assert sent[0][2] == bytes([0, 0x12, 0x34])
+    assert world.instance(13, 0).value == 0x1234
+
+    with pytest.raises(ValueError):
+        events.absolute_input(0, 0, 1)  # push button, not absolute input
+
+
+def test_absolute_input_event_matches_protocol_txt_example(dispatcher, monkeypatch):
+    """Wire layout from _protocol.txt ABSOLUTE_INPUT_EVENT example.
+
+    Control Device A59, instance 5, value 0xAABB:
+
+      target  = 59 + 64 = 0x007B
+      type    = 0x02
+      length  = 0x03
+      data    = [instance, value_hi, value_lo]
+    """
+    from zencontrol_simulator.world import Device, Instance
+
+    mac = bytes.fromhex("7CBACC2F402E")
+    frame = build_event(
+        mac,
+        target=59 + 64,
+        event_code=0x02,
+        payload=bytes([0x05, 0xAA, 0xBB]),
+    )
+    assert frame[0:2] == b"ZC"
+    assert frame[2:8] == mac
+    assert frame[8:10] == b"\x00\x7B"
+    assert frame[10] == 0x02
+    assert frame[11] == 0x03
+    assert frame[12:15] == bytes([0x05, 0xAA, 0xBB])
+    assert frame[15] == 0x3C  # checksum from _protocol.txt
+    assert frame[15] == checksum(frame[:-1])
+    assert len(frame) == 16
+
+    _, world, events = dispatcher
+    world.devices[59] = Device(
+        address=59,
+        label="A59",
+        instances=[Instance(number=5, type=0x02, label="Dial")],
+    )
+    captured: list[tuple[int, int, bytes]] = []
+
+    def capture(target, code, payload=b"", instance=None):
+        captured.append((target, int(code), bytes(payload)))
+        return True
+
+    monkeypatch.setattr(events, "emit", capture)
+    assert events.absolute_input(59, 5, 0xAABB) is True
+    assert captured == [(59 + 64, 0x02, bytes([0x05, 0xAA, 0xBB]))]
+    assert world.instance(59, 5).value == 0xAABB
+
+
 def test_colour_scene_blob_length(dispatcher):
     disp, _, _ = dispatcher
     req = parse_request(_basic(CMD["QUERY_COLOUR_SCENE_0_7_DATA_FOR_ADDR"], address=0))

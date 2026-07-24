@@ -5,7 +5,6 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
-_protocol.txt
 .DS_Store
 
 # Vendor protocol PDF (not redistributed)

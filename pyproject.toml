@@ -21,8 +21,10 @@ dev = [
     "pytest>=6.0",
     "pytest-asyncio>=0.18.0",
 ]
-# Live protocol tests (tests/test_protocol_live.py) also need zencontrol-python:
-#   pip install -e ../zencontrol-python
+# Live protocol / dump tools: PyPI pin, or editable checkout via setup-venv.sh
+live = [
+    "zencontrol-python>=0.1.6",
+]
 
 [project.scripts]
 zencontrol-simulator = "zencontrol_simulator.__main__:main"

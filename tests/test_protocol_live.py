@@ -71,6 +71,7 @@ async def test_discover_devices_and_instances(live_protocol):
     ecd_nums = sorted(a.number for a in devices)
     assert 0 in ecd_nums and 1 in ecd_nums and 2 in ecd_nums
     assert 10 in ecd_nums and 11 in ecd_nums
+    assert 13 in ecd_nums
 
     instances = await p.query_instances_by_address(live_protocol.ecd(0))
     types = {(i.number, i.type.value) for i in instances}
@@ -84,6 +85,13 @@ async def test_discover_devices_and_instances(live_protocol):
     porch = await p.query_instances_by_address(live_protocol.ecd(10))
     porch_types = {i.type.value for i in porch}
     assert 3 in porch_types and 4 in porch_types  # occupancy + light sensor
+
+    absolute = await p.query_instances_by_address(live_protocol.ecd(13))
+    assert len(absolute) == 1
+    assert absolute[0].type.value == 0x02
+    assert await p.query_dali_instance_label(
+        live_protocol.instance(13, 0, type_code=0x02)
+    ) == "Slider"
 
 
 @pytest.mark.asyncio

@@ -193,6 +193,24 @@ class EventEmitter:
             instance=instance,
         )
 
+    def absolute_input(self, ecd: int, instance: int, value: int) -> bool:
+        """Emit ABSOLUTE_INPUT with payload [instance, value_hi, value_lo].
+
+        Matches ``_protocol.txt`` ABSOLUTE_INPUT_EVENT: ECD wire ``64+ecd``,
+        event ``0x02``, data length 3, big-endian 16-bit value.
+        """
+        self._require_instance(ecd, instance, expect_absolute=True)
+        value = int(value) & 0xFFFF
+        inst = self.world.instance(ecd, instance)
+        if inst is not None:
+            inst.value = value
+        return self.emit(
+            64 + ecd,
+            EventCode.ABSOLUTE_INPUT,
+            bytes([instance & 0xFF, (value >> 8) & 0xFF, value & 0xFF]),
+            instance=instance,
+        )
+
     def occupancy_heartbeat(self) -> bool:
         """Emit IS_OCCUPIED (0x06) as a keepalive without updating motion timers."""
         target = self.world.heartbeat_target()
@@ -214,6 +232,7 @@ class EventEmitter:
         *,
         expect_button: bool = False,
         expect_occupancy: bool = False,
+        expect_absolute: bool = False,
     ) -> None:
         if not 0 <= ecd <= 63:
             raise ValueError(f"ECD address must be 0-63, got {ecd}")
@@ -227,3 +246,5 @@ class EventEmitter:
             raise ValueError(f"Instance {ecd}.{instance} is not a push button")
         if expect_occupancy and inst.type != 0x03:
             raise ValueError(f"Instance {ecd}.{instance} is not an occupancy sensor")
+        if expect_absolute and inst.type != 0x02:
+            raise ValueError(f"Instance {ecd}.{instance} is not an absolute input")

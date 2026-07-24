@@ -404,7 +404,7 @@ async def test_live_ecd_shape_discovery_and_labels(live_protocol):
     p = live_protocol.protocol
     devices = await p.query_dali_addresses_with_instances(live_protocol.controller, start_address=0)
     nums = {a.number for a in devices}
-    assert {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}.issubset(nums)
+    assert {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}.issubset(nums)
 
     bedhead = await p.query_instances_by_address(live_protocol.ecd(7))
     assert len(bedhead) == 4
@@ -417,10 +417,16 @@ async def test_live_ecd_shape_discovery_and_labels(live_protocol):
     lounge = await p.query_instances_by_address(live_protocol.ecd(5))
     assert any(i.type.value == 6 for i in lounge)
 
+    absolute = await p.query_instances_by_address(live_protocol.ecd(13))
+    assert len(absolute) == 1 and absolute[0].type.value == 0x02
+
     assert await p.query_dali_device_label(live_protocol.ecd(7)) == "Master Bedhead"
     assert await p.query_dali_instance_label(live_protocol.instance(5, 6, type_code=6)) == "Lounge GP"
     assert await p.query_dali_instance_label(live_protocol.instance(9, 3, type_code=6)) == "Echo GP"
     assert await p.query_dali_instance_label(live_protocol.instance(10, 1, type_code=4)) == "Porch Lux"
+    assert await p.query_dali_instance_label(
+        live_protocol.instance(13, 0, type_code=0x02)
+    ) == "Slider"
 
 
 @pytest.mark.asyncio

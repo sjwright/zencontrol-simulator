@@ -55,7 +55,8 @@ if [[ -d "$ZENCONTROL_PYTHON" ]]; then
   echo "Installing zencontrol-python from $ZENCONTROL_PYTHON"
   pip install -e "$ZENCONTROL_PYTHON"
 else
-  echo "warning: $ZENCONTROL_PYTHON not found; live protocol tests will skip"
+  echo "Local checkout $ZENCONTROL_PYTHON not found; installing zencontrol-python>=0.1.6 from PyPI"
+  pip install "zencontrol-python>=0.1.6"
 fi
 
 echo

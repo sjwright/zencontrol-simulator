@@ -49,6 +49,7 @@ button 0 0          # ECD 0, instance 0 press
 hold 0 1            # button hold
 occupy 0 2          # occupancy / motion pulse (resets last_detect clock)
 occupy 0 2 0        # emit unoccupied payload (library still treats as motion)
+absolute 13 0 4660  # absolute input ECD 13, instance 0, value 0x1234
 level 1 128         # ECG/group/broadcast level + events
 scene 64 1          # scene recall + events
 colour 0 tc 4000    # tunable white
@@ -73,7 +74,7 @@ packet testing. Occupancy timer queries return **seconds since last motion**
 - Colour scenes 0–1 and 8–9 on the living-room tunable-white light
 - Groups with labelled scenes (0–3) and without (4–5), matching live dumps
 - ECDs covering live shapes: single buttons, 3-button+general sensor, 4-button pads,
-  6-button pads, 6-button+general sensor, occupancy+lux combos
+  6-button pads, 6-button+general sensor, occupancy+lux combos, and an absolute-input dial
 - Three profiles and six system variables (switch / lux-sensor / other), with
   `Demo Lux Sensor` using `simulate: 2500` for a daylight sine curve
 
@@ -83,7 +84,7 @@ Config is validated on load (address ranges, missing group refs, colour
 ## Tests
 
 ```bash
-./setup-venv.sh    # or: pip install -e ".[dev]" && pip install -e ../zencontrol-python
+./setup-venv.sh    # or: pip install -e ".[dev,live]" && pip install -e ../zencontrol-python
 source .venv/bin/activate
 pytest
 ```
@@ -91,7 +92,8 @@ pytest
 Without zencontrol-python installed, unit/state tests still run; live protocol
 tests in `tests/test_protocol_live.py` skip via `importorskip`. Those tests
 start the simulator on an ephemeral port and drive it through
-`zencontrol.ZenProtocol` (unicast TPI Advanced).
+`zencontrol.ZenProtocol` (unicast TPI Advanced). The `live` extra pulls
+`zencontrol-python>=0.1.6` from PyPI when you are not using an editable checkout.
 
 `tests/test_demo_permutations.py` exercises the expanded demo world: hallway
 group overlap, switching gear, second TC/RGB/XY fixtures, ECD pad shapes,
@@ -227,7 +229,7 @@ are `**LEVEL_CHANGE_V2` only**; scene level queries return 16 DALI slots with
 | ------ | ----------------------------- | ---------- | ------------------------------------- |
 | `0x00` | BUTTON_PRESS_EVENT            | Simulated  | Inject via `-i`; ECD wire `64+ecd`    |
 | `0x01` | BUTTON_HOLD_EVENT             | Simulated  | Inject via `-i`                       |
-| `0x02` | ABSOLUTE_INPUT_EVENT          | No         |                                       |
+| `0x02` | ABSOLUTE_INPUT_EVENT          | Simulated  | Inject via `-i`; payload BE16 value   |
 | `0x03` | LEVEL_CHANGE_EVENT            | N/A        | Legacy; use `LEVEL_CHANGE_EVENT_V2`   |
 | `0x04` | GROUP_LEVEL_CHANGE_EVENT      | N/A        | Legacy; use V2 on group wire 64–79    |
 | `0x05` | SCENE_CHANGE_EVENT            | Simulated  | Emitted on `DALI_SCENE` / inject      |

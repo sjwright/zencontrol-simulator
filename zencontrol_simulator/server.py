@@ -304,6 +304,9 @@ class Simulator:
     def inject_occupancy(self, ecd: int, instance: int, occupied: bool = True) -> bool:
         return self.events.occupancy(ecd, instance, occupied=occupied)
 
+    def inject_absolute_input(self, ecd: int, instance: int, value: int) -> bool:
+        return self.events.absolute_input(ecd, instance, value)
+
     def inject_level(self, wire: int, level: int) -> None:
         """Mutate + emit LEVEL_CHANGE_V2 as if DALI_ARC_LEVEL was received."""
         self.events.apply_and_emit_level(wire, level)
@@ -332,6 +335,7 @@ class Simulator:
           button <ecd> <instance>
           hold <ecd> <instance>
           occupy <ecd> <instance> [0|1]
+          absolute <ecd> <instance> <value>
           level <wire> <0-254>
           scene <wire> <0-11>
           colour <wire> tc <kelvin>
@@ -343,7 +347,8 @@ class Simulator:
         loop = asyncio.get_running_loop()
         logger.info(
             "Interactive mode — type 'help' for inject commands "
-            "(button / hold / occupy / level / scene / colour / profile / stats / quit)"
+            "(button / hold / occupy / absolute / level / scene / colour / "
+            "profile / stats / quit)"
         )
         while True:
             if self._stop is not None and self._stop.is_set():
@@ -378,6 +383,7 @@ class Simulator:
                     "  button <ecd> <instance>\n"
                     "  hold <ecd> <instance>\n"
                     "  occupy <ecd> <instance> [0|1]\n"
+                    "  absolute <ecd> <instance> <value>  # 0-65535\n"
                     "  level <wire> <0-254>     # ECG 0-63, group 64-79, broadcast 255\n"
                     "  scene <wire> <0-11>\n"
                     "  colour <wire> tc <kelvin>\n"
@@ -403,6 +409,8 @@ class Simulator:
                 self.inject_occupancy(int(ecd), int(instance), occupied=True)
             case ["occupy" | "occupancy", ecd, instance, flag]:
                 self.inject_occupancy(int(ecd), int(instance), occupied=bool(int(flag)))
+            case ["absolute" | "absinput", ecd, instance, value]:
+                self.inject_absolute_input(int(ecd), int(instance), int(value))
             case ["level", wire, level]:
                 self.inject_level(int(wire), int(level))
             case ["scene", wire, scene]:

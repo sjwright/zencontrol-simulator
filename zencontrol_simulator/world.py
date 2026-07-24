@@ -381,6 +381,8 @@ class Instance:
     timers: InstanceTimers | None = None
     active: bool = True
     error: bool = False
+    # Last absolute-input value (0–65535); None until an inject/event sets it.
+    value: int | None = None
 
 
 @dataclass(slots=True)

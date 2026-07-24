@@ -28,6 +28,7 @@ async def test_zencontrol_python_discovery_and_control():
 
     button_events: list = []
     motion_events: list = []
+    absolute_events: list = []
     profile_events: list = []
     sysvar_events: list = []
     colour_events: list = []
@@ -49,6 +50,7 @@ async def test_zencontrol_python_discovery_and_control():
             lights = await zen.get_lights()
             groups = await zen.get_groups()
             buttons = await zen.get_buttons()
+            absolute_inputs = await zen.get_absolute_inputs()
             sensors = await zen.get_motion_sensors()
             profiles = await zen.get_profiles()
             sysvars = await zen.get_system_variables(give_up_after=5)
@@ -56,6 +58,7 @@ async def test_zencontrol_python_discovery_and_control():
             assert len(lights) == 12
             assert len(groups) == 6
             assert len(buttons) >= 9
+            assert len(absolute_inputs) >= 1
             assert len(sensors) >= 2
             assert len(profiles) == 3
             assert len(sysvars) >= 2
@@ -73,6 +76,13 @@ async def test_zencontrol_python_discovery_and_control():
             assert any(getattr(b, "label", None) == "Living Room Switch" for b in buttons)
             assert any(getattr(b, "label", None) == "Entrance 6-Button" for b in buttons)
             assert any(getattr(s, "label", None) == "Porch Sensor" for s in sensors)
+            slider = next(
+                a
+                for a in absolute_inputs
+                if a.instance.address.number == 13 and a.instance.number == 0
+            )
+            assert slider.instance_label == "Slider"
+            assert slider.value is None
 
             await zen.start()
             await asyncio.sleep(0.2)
@@ -82,6 +92,9 @@ async def test_zencontrol_python_discovery_and_control():
 
             async def on_motion(sensor, occupied):
                 motion_events.append((sensor, occupied))
+
+            async def on_absolute(absolute_input, value):
+                absolute_events.append((absolute_input, value))
 
             async def on_profile(profile):
                 profile_events.append(profile)
@@ -95,6 +108,7 @@ async def test_zencontrol_python_discovery_and_control():
 
             zen.button_press = on_button
             zen.motion_event = on_motion
+            zen.absolute_input_change = on_absolute
             zen.profile_change = on_profile
             zen.system_variable_change = on_sysvar
             zen.light_change = on_light
@@ -141,8 +155,12 @@ async def test_zencontrol_python_discovery_and_control():
             # Injected events reach library callbacks
             sim.inject_button_press(0, 0)
             sim.inject_occupancy(0, 2, occupied=True)
+            sim.inject_absolute_input(13, 0, 0x1234)
             await asyncio.sleep(0.4)
             assert len(button_events) >= 1
             assert len(motion_events) >= 1
+            assert any(value == 0x1234 for _, value in absolute_events)
+            assert absolute_events[0][0] is slider
+            assert slider.value == 0x1234
     finally:
         await sim.stop()

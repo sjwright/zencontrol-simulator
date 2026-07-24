@@ -661,6 +661,14 @@ devices:
         type: light_sensor
         label: "Entrance Lux"
 
+  - address: 13
+    label: "Demo Absolute Input"
+    serial: 0x020000000000000C
+    instances:
+      - number: 0
+        type: absolute_input
+        label: "Slider"
+
 profiles:
   current: 1
   last_scheduled: 1
