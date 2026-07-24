@@ -8,6 +8,8 @@ human-coded [`zencontrol-python`](https://github.com/sjwright/zencontrol-python)
 protocol implementation, and a test suite which is known to work against physical
 hardware.
 
+If you want the simulator to mimic your live environment, you can run zencontrol-dump against a real controller to generate a config file which you can load into the simulator.
+
 ## Quick start
 
 Requires **Python 3.14+**.
