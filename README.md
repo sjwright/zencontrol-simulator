@@ -20,7 +20,13 @@ source .venv/bin/activate
 zencontrol-simulator                 # uses ./config.yaml
 zencontrol-simulator -v              # debug logging
 zencontrol-simulator -i              # interactive event injection
+
+# Snapshot a live controller into a simulator YAML
+zencontrol-dump -ip 1.2.3.4
+zencontrol-dump -ip 1.2.3.4 -port 5108 -out config2.yaml
 ```
+
+`zencontrol-dump` requires `zencontrol-python` (installed by `setup-venv.sh`). `-ip` is required; `-port` defaults to `5108`; `-out` defaults to `config-{controller-label}.yaml`.
 
 Point a client at:
 

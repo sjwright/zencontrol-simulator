@@ -26,6 +26,7 @@ dev = [
 
 [project.scripts]
 zencontrol-simulator = "zencontrol_simulator.__main__:main"
+zencontrol-dump = "zencontrol_simulator.dump:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

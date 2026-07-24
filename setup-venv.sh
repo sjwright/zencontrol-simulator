@@ -62,3 +62,4 @@ echo
 echo "Ready. Activate with:  source $VENV/bin/activate"
 echo "Run tests with:        pytest"
 echo "Run simulator with:    zencontrol-simulator"
+echo "Dump live config with: zencontrol-dump -ip <controller-ip>"
