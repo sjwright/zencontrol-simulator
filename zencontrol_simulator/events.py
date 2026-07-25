@@ -147,9 +147,8 @@ class EventEmitter:
         self.emit_level_changes(self.world.apply_per_light_level(wire, choose))
 
     def apply_and_emit_colour(self, wire: int, colour: Colour) -> None:
-        blob = colour.to_bytes()
         for target in self.world.apply_colour(wire, colour):
-            self.colour_change(target, blob)
+            self.colour_change(target, self.world.colour_event_bytes(target, colour))
 
     def apply_and_emit_stop_fade(self, wire: int) -> None:
         self.emit_level_changes(self.world.clear_fade(wire))
@@ -193,13 +192,39 @@ class EventEmitter:
         # update last_motion_at so QUERY_OCCUPANCY_INSTANCE_TIMERS advances correctly.
         if inst is not None and inst.timers is not None and occupied:
             inst.timers.note_motion()
-        return self.emit(
+        sent = self.emit(
             64 + ecd,
             EventCode.IS_OCCUPIED,
             # PDF OCCUPANCY_EVENT: instance number + unused data (example 0x01).
             bytes([instance & 0xFF, 0x01]),
             instance=instance,
         )
+        if occupied and inst is not None:
+            for group_number in inst.groups:
+                if group_number == 0xFF:  # unassigned target slot
+                    continue
+                if self.world.mark_group_occupied(group_number):
+                    self.group_occupancy(group_number, True)
+        return sent
+
+    def group_occupancy(self, group_number: int, occupied: bool) -> bool:
+        """Emit GROUP_OCCUPANCY_EVENT for a group wire.
+
+        PDF payload is ``[0xFF, occupied]`` — the instance byte is unused because
+        the event describes the group, not the sensor that triggered it.
+        """
+        return self.emit(
+            64 + group_number,
+            EventCode.GROUP_OCCUPIED,
+            bytes([0xFF, 1 if occupied else 0]),
+        )
+
+    def expire_group_occupancy(self) -> list[int]:
+        """Emit "not occupied" for groups whose hold has elapsed; return them."""
+        expired = self.world.expire_group_occupancy()
+        for group_number in expired:
+            self.group_occupancy(group_number, False)
+        return expired
 
     def absolute_input(self, ecd: int, instance: int, value: int) -> bool:
         """Emit ABSOLUTE_INPUT with payload [instance, value_hi, value_lo].

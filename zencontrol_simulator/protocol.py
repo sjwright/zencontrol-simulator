@@ -26,10 +26,20 @@ class ResponseType(IntEnum):
 
 
 class ErrorCode(IntEnum):
+    """Full PDF "Error Codes" table. Only a subset is ever emitted."""
+
     CHECKSUM = 0x01
-    SHORT_CIRCUIT = 0x02  # DALI line fault / not ready (PDF Error Codes)
+    SHORT_CIRCUIT = 0x02  # DALI line fault / not ready
+    RECEIVE_ERROR = 0x03
     UNKNOWN_CMD = 0x04
+    PAID_FEATURE = 0xB0
     INVALID_ARGS = 0xB1
+    CMD_REFUSED = 0xB2
+    QUEUE_FAILURE = 0xB3
+    RESPONSE_UNAVAIL = 0xB4
+    OTHER_DALI_ERROR = 0xB5
+    MAX_LIMIT = 0xB6
+    UNEXPECTED_RESULT = 0xB7
     UNKNOWN_TARGET = 0xB8
 
 

@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from zencontrol_simulator.events import EventEmitter
+from conftest import LEGACY_ACK
 from zencontrol_simulator.handlers import CMD, CommandDispatcher
 from zencontrol_simulator.protocol import ParseFailure, ResponseType, checksum, parse_request
 from zencontrol_simulator.world import load_world
@@ -49,7 +50,7 @@ def test_hallway_group_scene_clears_sibling():
     # Group 3 scene first
     req = parse_request(_basic(CMD["DALI_SCENE"], address=67, d2=0))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.groups[3].last_scene_current is True
     assert world.lights[5].level == 200
     assert world.lights[6].level == 200
@@ -57,7 +58,7 @@ def test_hallway_group_scene_clears_sibling():
     # Group 2 scene shares light 5 → clears group 3
     req2 = parse_request(_basic(CMD["DALI_SCENE"], address=66, d2=1))
     assert not isinstance(req2, ParseFailure)
-    assert disp.handle(req2)[0] == ResponseType.OK
+    assert disp.handle(req2)[0] == ResponseType.NO_ANSWER
     assert world.groups[2].last_scene_current is True
     assert world.groups[3].last_scene_current is False
     assert world.lights[4].level == 80
@@ -72,12 +73,12 @@ def test_hallway_group_level_clears_sibling_scene():
     disp, world, _ = _disp()
     req = parse_request(_basic(CMD["DALI_SCENE"], address=66, d2=0))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.groups[2].last_scene_current is True
 
     req2 = parse_request(_basic(CMD["DALI_ARC_LEVEL"], address=67, d2=40))
     assert not isinstance(req2, ParseFailure)
-    assert disp.handle(req2)[0] == ResponseType.OK
+    assert disp.handle(req2)[0] == ResponseType.NO_ANSWER
     assert world.groups[2].last_scene_current is False
     assert world.lights[5].level == 40
     assert world.lights[6].level == 40
@@ -92,7 +93,7 @@ def test_rgb_scene_recall_applies_colour():
     disp, world, _ = _disp()
     req = parse_request(_basic(CMD["DALI_SCENE"], address=2, d2=1))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     light = world.lights[2]
     assert light.level == 64
     assert light.last_scene == 1
@@ -105,7 +106,7 @@ def test_xy_scene_recall_applies_colour():
     disp, world, _ = _disp()
     req = parse_request(_basic(CMD["DALI_SCENE"], address=3, d2=1))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     light = world.lights[3]
     assert light.level == 50
     assert light.colour is not None
@@ -132,7 +133,7 @@ def test_second_rgb_scene_recall():
     disp, world, _ = _disp()
     req = parse_request(_basic(CMD["DALI_SCENE"], address=8, d2=1))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     light = world.lights[8]
     assert light.level == 32
     assert light.colour.r == 255 and light.colour.g == 0 and light.colour.b == 128
@@ -153,12 +154,12 @@ def test_switching_gear_on_off_and_min_zero():
 
         on = parse_request(_basic(CMD["DALI_ARC_LEVEL"], address=addr, d2=254))
         assert not isinstance(on, ParseFailure)
-        assert disp.handle(on)[0] == ResponseType.OK
+        assert disp.handle(on)[0] == ResponseType.NO_ANSWER
         assert light.level == 254
 
         off = parse_request(_basic(CMD["DALI_OFF"], address=addr))
         assert not isinstance(off, ParseFailure)
-        assert disp.handle(off)[0] == ResponseType.OK
+        assert disp.handle(off)[0] == ResponseType.NO_ANSWER
         assert light.level == 0
 
 
@@ -167,7 +168,7 @@ def test_switching_gear_null_scenes_leave_level():
     world.lights[10].set_level(254)
     req = parse_request(_basic(CMD["DALI_SCENE"], address=10, d2=0))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[10].level == 254  # no scene_levels configured
     assert world.lights[10].last_scene == 0
     assert world.lights[10].last_scene_current is True
@@ -177,14 +178,14 @@ def test_group_5_controls_both_switching_members():
     disp, world, _ = _disp()
     req = parse_request(_basic(CMD["DALI_ARC_LEVEL"], address=69, d2=254))  # group 5
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[10].level == 254
     assert world.lights[11].level == 254
     assert world.group_level(5) == 254
 
     off = parse_request(_basic(CMD["DALI_OFF"], address=69))
     assert not isinstance(off, ParseFailure)
-    assert disp.handle(off)[0] == ResponseType.OK
+    assert disp.handle(off)[0] == ResponseType.NO_ANSWER
     assert world.lights[10].level == 0
     assert world.lights[11].level == 0
 
@@ -312,16 +313,16 @@ async def test_live_switching_gear_and_group_5(live_protocol):
         addr = live_protocol.ecg(n)
         cg = await p.dali_query_cg_type(addr)
         assert cg is not None and 7 in cg
-        assert await p.dali_arc_level(addr, 254) is True
+        assert await p.dali_arc_level(addr, 254) is LEGACY_ACK
         assert await p.dali_query_level(addr) == 254
-        assert await p.dali_off(addr) is True
+        assert await p.dali_off(addr) is LEGACY_ACK
         assert await p.dali_query_level(addr) == 0
 
     g5 = live_protocol.group(5)
     assert await p.query_group_label(g5) == "Utility"
     scenes = await p.query_scene_numbers_for_group(g5)
     assert scenes == [] or scenes is None or list(scenes) == []
-    assert await p.dali_arc_level(g5, 254) is True
+    assert await p.dali_arc_level(g5, 254) is LEGACY_ACK
     assert live_protocol.world.lights[10].level == 254
     assert live_protocol.world.lights[11].level == 254
 
@@ -335,12 +336,12 @@ async def test_live_hallway_overlap_and_empty_group_scenes(live_protocol):
 
     assert await p.query_group_label(g2) == "Hallway North Wing"
     assert await p.query_group_label(g3) == "Hallway South Wing"
-    assert await p.dali_scene(g2, 0) is True
+    assert await p.dali_scene(g2, 0) is LEGACY_ACK
     assert live_protocol.world.lights[4].level == 200
     assert live_protocol.world.lights[5].level == 200
     assert live_protocol.world.groups[2].last_scene_current is True
 
-    assert await p.dali_arc_level(g3, 55) is True
+    assert await p.dali_arc_level(g3, 55) is LEGACY_ACK
     assert live_protocol.world.groups[2].last_scene_current is False
     assert live_protocol.world.lights[5].level == 55
     assert live_protocol.world.lights[6].level == 55
@@ -354,7 +355,7 @@ async def test_live_hallway_overlap_and_empty_group_scenes(live_protocol):
 async def test_live_rgb_and_xy_scene_recall(live_protocol):
     p = live_protocol.protocol
     rgb = live_protocol.ecg(2)
-    assert await p.dali_scene(rgb, 1) is True
+    assert await p.dali_scene(rgb, 1) is LEGACY_ACK
     assert await p.dali_query_level(rgb) == 64
     colour = await p.query_dali_colour(rgb)
     assert colour is not None
@@ -362,7 +363,7 @@ async def test_live_rgb_and_xy_scene_recall(live_protocol):
     assert colour.r == 0 and colour.g == 0 and colour.b == 255
 
     xy = live_protocol.ecg(3)
-    assert await p.dali_scene(xy, 1) is True
+    assert await p.dali_scene(xy, 1) is LEGACY_ACK
     assert await p.dali_query_level(xy) == 50
     xy_colour = await p.query_dali_colour(xy)
     assert xy_colour is not None

@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from zencontrol_simulator.events import EventEmitter
-from zencontrol_simulator.handlers import CMD, CommandDispatcher
+from zencontrol_simulator.handlers import CMD, LEGACY_ACK_COMMANDS, CommandDispatcher
 from zencontrol_simulator.protocol import ParseFailure, ResponseType, checksum, parse_request
 from zencontrol_simulator.server import Simulator
 from zencontrol_simulator.world import FADE_PROGRESS_MIN_MS, load_world
@@ -60,7 +60,12 @@ def _targets(emitted, code: int) -> set[int]:
 def _handle(disp, packet: bytes):
     req = parse_request(packet)
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    expected = (
+        ResponseType.NO_ANSWER
+        if packet[2] in LEGACY_ACK_COMMANDS
+        else ResponseType.OK
+    )
+    assert disp.handle(req)[0] == expected
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import LEGACY_ACK
+
 from zencontrol_simulator.server import Simulator
 from zencontrol_simulator.world import load_world
 
@@ -115,7 +117,7 @@ async def test_zencontrol_python_discovery_and_control():
 
             # Arc level mutates + query matches
             light = by_addr[1]
-            assert await light.set(level=50, fade=True) is True
+            assert await light.set(level=50, fade=True) is LEGACY_ACK
             await asyncio.sleep(0.15)
             assert await zen.protocol.dali_query_level(light.address) == 50
             assert world.lights[1].level == 50
@@ -132,7 +134,7 @@ async def test_zencontrol_python_discovery_and_control():
 
             # Group scene recall
             group = next(g for g in groups if g.address.number == 0)
-            assert await group.set_scene(1) is True
+            assert await group.set_scene(1) is LEGACY_ACK
             await asyncio.sleep(0.15)
             assert world.groups[0].last_scene == 1
             assert world.lights[0].level == 80

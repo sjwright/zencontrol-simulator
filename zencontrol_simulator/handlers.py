@@ -104,6 +104,29 @@ CMD = {
     "DALI_STOP_FADE": 0xC1,
 }
 
+# Level-changing commands that acknowledge with NO_ANSWER rather than OK. Each
+# of these has a PDF response table reading: "Command has successfully sent and
+# no answer was received in response to the command (this is expected behaviour
+# for a command). A better response would be OK (0xA0) but we must maintain
+# backwards compatibility." DALI_ENABLE_DAPC_SEQ shares that wording but is
+# handled as a stub elsewhere; DALI_INHIBIT, DALI_COLOUR, DALI_CUSTOM_FADE and
+# DALI_STOP_FADE are documented as OK.
+LEGACY_ACK_COMMANDS = frozenset(
+    CMD[name]
+    for name in (
+        "DALI_SCENE",
+        "DALI_ARC_LEVEL",
+        "DALI_ON_STEP_UP",
+        "DALI_STEP_DOWN_OFF",
+        "DALI_UP",
+        "DALI_DOWN",
+        "DALI_RECALL_MAX",
+        "DALI_RECALL_MIN",
+        "DALI_OFF",
+        "DALI_GO_TO_LAST_ACTIVE_LEVEL",
+    )
+)
+
 MAX_SCENE = 12
 # Zencontrol has 12 scenes (0–11). Do not confuse with the 16-byte answer from
 # QUERY_SCENE_LEVELS_BY_ADDRESS: that is the DALI gear scene table (slots 0–15);
@@ -297,11 +320,13 @@ class CommandDispatcher:
         return self._unknown_target(seq)
 
     def _with_level_target(self, request: Request, action: LevelAction) -> bytes:
-        """Validate ECG/group/broadcast wire, run action(wire), return OK."""
+        """Validate ECG/group/broadcast wire, run action(wire), acknowledge."""
         wire = self._addr(request)
         if (err := self._check_level_target(request.seq, wire)) is not None:
             return err
         action(wire)
+        if request.command in LEGACY_ACK_COMMANDS:
+            return _no_answer(request.seq)
         return _ok(request.seq)
 
     def _with_light(self, request: Request, action: LightAction) -> bytes:
@@ -522,7 +547,9 @@ class CommandDispatcher:
         if profile_id == 0xFFFF:
             profile_id = self.world.last_scheduled_profile
         elif profile_id not in self.world.profiles:
-            return _error(request.seq, ErrorCode.INVALID_ARGS)
+            # PDF: "A failure to schedule will reply with a response type of
+            # REPLY_ERROR and ERROR_CMD_REFUSED as data."
+            return _error(request.seq, ErrorCode.CMD_REFUSED)
         self.world.current_profile = profile_id
         self.events.profile_change(profile_id)
         return _ok(request.seq)
@@ -571,18 +598,21 @@ class CommandDispatcher:
         return _label_answer(request.seq, text)
 
     def _query_level(self, request: Request) -> bytes:
-        level = self._level_for_wire(self._addr(request))
-        if level is None:
-            return _no_answer(request.seq)
-        return _answer(request.seq, bytes([level & 0xFF]))
+        # PDF: "If the address does not exist in the database (or the group has no
+        # devices) the response will be 0. This is to bias any resulting decision to
+        # send commands to this unknown target as turning the light ON."
+        wire = self._addr(request)
+        level = self._level_for_wire(wire)
+        if 64 <= wire <= 79 and not self.world.lights_in_group(wire - 64):
+            level = 0
+        return _answer(request.seq, bytes([(level or 0) & 0xFF]))
 
     def _query_cg_type(self, request: Request) -> bytes:
-        return self._with_light(
-            request,
-            lambda light: _answer(
-                request.seq, bitmap_from_addresses(light.cg_types, max_bits=32)
-            ),
-        )
+        # PDF: "does not work for groups or broadcast target. If the device does
+        # not exist, will return all zero."
+        light = self.world.light(self._addr(request))
+        types = light.cg_types if light is not None else []
+        return _answer(request.seq, bitmap_from_addresses(types, max_bits=32))
 
     def _query_cg_status(self, request: Request) -> bytes:
         wire = self._addr(request)
@@ -824,9 +854,11 @@ class CommandDispatcher:
         return self._with_level_target(request, act)
 
     def _query_addresses_with_instances(self, request: Request) -> bytes:
+        # PDF pages by control-device number, not wire address: "run the command
+        # with start address 0 and then a further command with start address 60 to
+        # check for instances on the final 4 control devices". Results are wires.
         start = self._data(request, 3, 0)
-        addrs = sorted(64 + a for a in self.world.devices.keys())
-        addrs = [a for a in addrs if a >= start][:60]
+        addrs = [64 + a for a in sorted(self.world.devices) if a >= start][:60]
         if not addrs:
             return _no_answer(request.seq)
         return _answer(request.seq, bytes(addrs))

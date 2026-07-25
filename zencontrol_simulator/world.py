@@ -39,6 +39,8 @@ SYSVAR_SIMULATE_INTERVAL = 30.0
 # Real controllers re-emit LEVEL_CHANGE_V2 ~every 500ms during long fades.
 FADE_PROGRESS_INTERVAL_S = 0.5
 FADE_PROGRESS_MIN_MS = 2000
+# How often group occupancy holds are checked for expiry.
+GROUP_OCCUPANCY_INTERVAL_S = 1.0
 # Signed BE16 range used by QUERY/SET_SYSTEM_VARIABLE.
 _SYSVAR_VALUE_MAX = 32767
 # Control-gear status bits (IEC 62386 / zencontrol status byte).
@@ -75,7 +77,7 @@ def scene_colour_bytes(light: Light, scene: int) -> bytes | None:
         and light.scene_colours[scene] is not None
         and light.colour is not None
     ):
-        return light.colour.to_bytes()
+        return light.colour.to_event_bytes(light.colour_features.rgbwaf_channels)
     return None
 
 
@@ -147,6 +149,19 @@ class Colour:
                 return bytes([0x10, (x >> 8) & 0xFF, x & 0xFF, (y >> 8) & 0xFF, y & 0xFF])
             case _:
                 return b""
+
+    def to_event_bytes(self, rgbwaf_channels: int = 0) -> bytes:
+        """COLOUR_CHANGED_EVENT payload, narrowed to the fixture's channel count.
+
+        PDF COLOUR_CHANGED_EVENT: "If a fixture is just RGB or RGBW (and not
+        RGBWAF) then the data length will be equal to the number of channels + 1."
+        So a 3-channel light reports ``[0x80, R, G, B]``. Tc / XY / full 6-channel
+        RGBWAF, and any fixture with an unknown width, report full width.
+        """
+        raw = self.to_bytes()
+        if self.type == "rgbwaf" and 1 <= rgbwaf_channels < 6:
+            return raw[: 1 + rgbwaf_channels]
+        return raw
 
     def to_scene_blob(self) -> bytes:
         """Pad/truncate to 7 bytes for colour scene queries (PDF: unused bytes 0xFF)."""
@@ -345,6 +360,12 @@ class Group:
     last_scene_current: bool = False
     scenes: dict[int, str] = field(default_factory=dict)
     inhibited_until: float | None = None
+    # Wall-clock deadline after which the group reverts to unoccupied; None when
+    # the group is not currently occupied (see GROUP_OCCUPANCY_EVENT).
+    occupied_until: float | None = None
+
+    def is_occupied(self) -> bool:
+        return self.occupied_until is not None
 
     def set_level(self, level: int) -> None:
         self.level = max(0, min(254, int(level)))
@@ -464,6 +485,9 @@ class World:
     # Default fade for scene recalls (milliseconds). Real controllers re-emit
     # LEVEL_CHANGE_V2 every ~500ms while fading when this is greater than 2000.
     dim_time_ms: int = 0
+    # Group occupancy hold. PDF: "The default value of 'seconds to unoccupied' is
+    # 30 seconds but may be changed in the grid control ... from V2.2 onwards."
+    seconds_to_unoccupied: int = 30
     # First segment of fitting numbers (PDF QUERY_CONTROLLER_FITTING_NUMBER / defaults).
     fitting_number: str = "1"
     # UTC seconds for QUERY_PROFILE_INFORMATION header fields.
@@ -502,6 +526,29 @@ class World:
         if device is None:
             return None
         return next((inst for inst in device.instances if inst.number == number), None)
+
+    def mark_group_occupied(self, group_number: int) -> bool:
+        """Refresh a group's occupancy hold; True only on unoccupied → occupied.
+
+        PDF GROUP_OCCUPANCY_EVENT: "Does not send occupied on every trigger from
+        sensor, only on state changes."
+        """
+        group = self.group(group_number)
+        if group is None:
+            return False
+        was_occupied = group.is_occupied()
+        group.occupied_until = time.time() + self.seconds_to_unoccupied
+        return not was_occupied
+
+    def expire_group_occupancy(self) -> list[int]:
+        """Return groups whose "seconds to unoccupied" has just elapsed."""
+        now = time.time()
+        expired = []
+        for number, group in sorted(self.groups.items()):
+            if group.occupied_until is not None and now >= group.occupied_until:
+                group.occupied_until = None
+                expired.append(number)
+        return expired
 
     def first_occupancy(self) -> tuple[int, int] | None:
         """Return (ecd, instance) for the first occupancy sensor, if any."""
@@ -546,6 +593,26 @@ class World:
         if len(blobs) != 1:
             return None
         return colours[0]
+
+    def agreed_member_channels(self, group_number: int) -> int:
+        """RGBWAF channel count when all coloured members agree; else 0 (full width)."""
+        counts = {
+            m.colour_features.rgbwaf_channels
+            for m in self.lights_in_group(group_number)
+            if m.colour is not None
+        }
+        return next(iter(counts)) if len(counts) == 1 else 0
+
+    def colour_event_bytes(self, wire: int, colour: Colour) -> bytes:
+        """COLOUR_CHANGED_EVENT payload for a wire, narrowed to its channel count."""
+        if wire <= 63:
+            light = self.lights.get(wire)
+            channels = light.colour_features.rgbwaf_channels if light else 0
+        elif 64 <= wire <= 79:
+            channels = self.agreed_member_channels(wire - 64)
+        else:
+            channels = 0
+        return colour.to_event_bytes(channels)
 
     def agreed_group_level(self, group_number: int) -> int | None:
         """Member arc when unanimous; None if empty/missing/mixed (255)."""
@@ -887,7 +954,9 @@ class World:
             if any(scene_colour_bytes(m, scene) is not None for m in members):
                 colour = self.agreed_member_colour(group_num)
                 if colour is not None:
-                    effects.colours.append((group_wire, colour.to_bytes()))
+                    effects.colours.append(
+                        (group_wire, self.colour_event_bytes(group_wire, colour))
+                    )
 
         if wire == 255:
             for light in self.lights.values():
@@ -1179,6 +1248,7 @@ def load_world(path: str | Path) -> World:
             else None
         ),
         dim_time_ms=max(0, _as_int(ctrl.get("dim_time_ms"), 0)),
+        seconds_to_unoccupied=max(1, _as_int(ctrl.get("seconds_to_unoccupied"), 30)),
         fitting_number=str(ctrl.get("fitting_number", "1")),
         last_overridden_profile_utc=_as_int(
             profiles_section.get("last_overridden_utc"), 0

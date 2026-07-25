@@ -7,6 +7,7 @@ import pytest
 
 from zencontrol_simulator.protocol import (
     MAX_TCP_SESSIONS,
+    ErrorCode,
     ResponseType,
     checksum,
     extract_request_frame,
@@ -164,6 +165,146 @@ async def test_tcp_max_sessions():
             except OSError:
                 pass
         await sim.stop()
+
+
+@pytest.fixture
+async def tcp_sim():
+    """Simulator on an ephemeral port with background event loops disabled."""
+    world = load_world(CONFIG)
+    world.bind_host = "127.0.0.1"
+    world.bind_port = 0
+    world.heartbeat_interval = 0
+    sim = Simulator(world)
+    await sim.start()
+    try:
+        yield sim
+    finally:
+        await sim.stop()
+
+
+async def _read_response(reader: asyncio.StreamReader) -> bytes:
+    header = await asyncio.wait_for(reader.readexactly(3), timeout=1.0)
+    body = await asyncio.wait_for(reader.readexactly(header[2] + 1), timeout=1.0)
+    return header + body
+
+
+@pytest.mark.asyncio
+async def test_tcp_reassembles_frame_split_byte_by_byte(tcp_sim):
+    """A TCP peer may flush a frame one byte at a time; the server must buffer."""
+    reader, writer = await asyncio.open_connection("127.0.0.1", tcp_sim.bind_port)
+    try:
+        for byte in _basic(CMD["QUERY_CONTROLLER_LABEL"], seq=11):
+            writer.write(bytes([byte]))
+            await writer.drain()
+            await asyncio.sleep(0)
+        resp = await _read_response(reader)
+        assert resp[0] == ResponseType.ANSWER
+        assert resp[1] == 11
+        assert resp[3 : 3 + resp[2]] == tcp_sim.world.label.encode("ascii")
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_tcp_reassembles_dynamic_frame_split_mid_payload(tcp_sim):
+    """Split inside the variable-length body, where the length byte is already
+    buffered but the payload is not."""
+    frame = _dynamic(
+        CMD["SET_TPI_EVENT_UNICAST_ADDRESS"],
+        bytes([0x1B, 0x3A, 127, 0, 0, 1]),  # port 6970, then IPv4
+        seq=12,
+    )
+    reader, writer = await asyncio.open_connection("127.0.0.1", tcp_sim.bind_port)
+    try:
+        writer.write(frame[:5])
+        await writer.drain()
+        await asyncio.sleep(0.05)
+        writer.write(frame[5:])
+        await writer.drain()
+        resp = await _read_response(reader)
+        assert resp[0] == ResponseType.OK
+        assert resp[1] == 12
+        assert tcp_sim.world.unicast_ip == "127.0.0.1"
+        assert tcp_sim.world.unicast_port == 6970
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_tcp_coalesced_frames_split_across_a_boundary(tcp_sim):
+    """Two frames arriving as segments that straddle the frame boundary."""
+    stream = _basic(CMD["QUERY_CONTROLLER_LABEL"], seq=1) + _basic(
+        CMD["QUERY_IS_DALI_READY"], seq=2
+    )
+    reader, writer = await asyncio.open_connection("127.0.0.1", tcp_sim.bind_port)
+    try:
+        writer.write(stream[:5])
+        await writer.drain()
+        await asyncio.sleep(0.05)
+        writer.write(stream[5:])
+        await writer.drain()
+        r1 = await _read_response(reader)
+        r2 = await _read_response(reader)
+        assert (r1[0], r1[1]) == (ResponseType.ANSWER, 1)
+        assert (r2[0], r2[1]) == (ResponseType.OK, 2)
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_tcp_bad_checksum_errors_and_session_survives(tcp_sim):
+    """A corrupt frame answers ERROR_CHECKSUM without dropping the connection."""
+    corrupt = bytearray(_basic(CMD["QUERY_CONTROLLER_LABEL"], seq=21))
+    corrupt[-1] ^= 0xFF
+    reader, writer = await asyncio.open_connection("127.0.0.1", tcp_sim.bind_port)
+    try:
+        writer.write(bytes(corrupt))
+        await writer.drain()
+        bad = await _read_response(reader)
+        assert bad[0] == ResponseType.ERROR
+        assert bad[1] == 21
+        assert bad[3] == ErrorCode.CHECKSUM
+
+        writer.write(_basic(CMD["QUERY_CONTROLLER_LABEL"], seq=22))
+        await writer.drain()
+        good = await _read_response(reader)
+        assert good[0] == ResponseType.ANSWER
+        assert good[1] == 22
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_tcp_resyncs_after_leading_garbage(tcp_sim):
+    """Bytes that cannot start a frame are discarded until a valid one appears."""
+    reader, writer = await asyncio.open_connection("127.0.0.1", tcp_sim.bind_port)
+    try:
+        writer.write(b"\x00\xff\x99" + _basic(CMD["QUERY_CONTROLLER_LABEL"], seq=31))
+        await writer.drain()
+        resp = await _read_response(reader)
+        assert resp[0] == ResponseType.ANSWER
+        assert resp[1] == 31
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_tcp_unknown_command_errors(tcp_sim):
+    reader, writer = await asyncio.open_connection("127.0.0.1", tcp_sim.bind_port)
+    try:
+        writer.write(_basic(0x7E, seq=41))
+        await writer.drain()
+        resp = await _read_response(reader)
+        assert resp[0] == ResponseType.ERROR
+        assert resp[3] == ErrorCode.UNKNOWN_CMD
+    finally:
+        writer.close()
+        await writer.wait_closed()
 
 
 @pytest.mark.asyncio

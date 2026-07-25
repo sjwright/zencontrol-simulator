@@ -100,6 +100,12 @@ start the simulator on an ephemeral port and drive it through
 group overlap, switching gear, second TC/RGB/XY fixtures, ECD pad shapes,
 and extra system variables.
 
+`tests/test_spec_conformance.py` quotes the PDF clause behind each rule the
+simulator follows, so a behaviour change that contradicts the document fails
+with the wording it broke. `tests/test_event_delivery.py` checks which transport
+each event mode actually reaches, and `tests/test_tcp.py` covers stream
+reassembly across arbitrary segment boundaries.
+
 ## Protocol reference
 
 Against Zencontrol’s *Advanced Third Party Interface API Document*
@@ -125,7 +131,7 @@ Unregistered opcodes reply `ERROR_UNKNOWN_CMD` (`0x04`).
 | TPI Event Multicast                               | Correct    | `ZC` header, MAC, target BE16, code, len ≤48, XOR checksum  |
 | Sequence Counter                                  | Correct    | Echoed on replies; ERROR when seq available on bad frames   |
 | Checksums                                         | Correct    | XOR of preceding bytes (verified vs PDF example)            |
-| Error Codes                                       | Correct    | Emits `0x01`, `0x04`, `0xB1`, `0xB8`; other codes unused    |
+| Error Codes                                       | Correct    | Full table defined; emits `0x01`, `0x04`, `0xB1`, `0xB2`, `0xB8` |
 | DALI Addressing                                   | Correct    | ECG 0–63, groups 64–79, ECD 64–127, broadcast 255           |
 
 ### API commands
@@ -148,10 +154,10 @@ Status legend: **Simulated** = responds with some degree of correctness / simula
 | `0x0C` | QUERY_OCCUPANCY_INSTANCE_TIMERS        | Simulated  | deadtime/hold/report + wall-clock last_detect             |
 | `0x0D` | QUERY_INSTANCES_BY_ADDRESS             | Partial    | Type/status; state always `0x00`; YAML instance types     |
 | `0x0E` | DALI_COLOUR                            | Simulated  | Colour frame; XY/Tc/RGBWAF; optional arc; group/broadcast |
-| `0x12` | QUERY_GROUP_BY_NUMBER                  | Partial    | Occupancy stub `0x01`; level = max member; empty → `NO_ANSWER` |
+| `0x12` | QUERY_GROUP_BY_NUMBER                  | Partial    | Live occupancy; level = max member; empty → `NO_ANSWER`   |
 | `0x14` | QUERY_SCENE_NUMBERS_BY_ADDRESS         | Simulated  | Scene indices with configured levels; none → `NO_ANSWER`  |
 | `0x15` | QUERY_GROUP_MEMBERSHIP_BY_ADDRESS      | Simulated  | Membership bitmap                                         |
-| `0x16` | QUERY_DALI_ADDRESSES_WITH_INSTANCES    | Simulated  | ECD wires; paged from start                               |
+| `0x16` | QUERY_DALI_ADDRESSES_WITH_INSTANCES    | Simulated  | Start = control device number; answers wires, 60 per page |
 | `0x1A` | QUERY_SCENE_NUMBERS_FOR_GROUP          | Simulated  | Scene bitmask                                             |
 | `0x1B` | QUERY_SCENE_LABEL_FOR_GROUP            | Simulated  | Scenes 0–11                                               |
 | `0x1C` | QUERY_CONTROLLER_VERSION_NUMBER        | Simulated  | From YAML `version`                                       |
@@ -183,18 +189,18 @@ Status legend: **Simulated** = responds with some degree of correctness / simula
 | `0x45` | QUERY_COLOUR_SCENE_0_7_DATA_FOR_ADDR   | Simulated  | 8×7-byte blobs; unused = `0xFF`×7                         |
 | `0x46` | QUERY_COLOUR_SCENE_8_11_DATA_FOR_ADDR  | Simulated  | 4×7-byte blobs                                            |
 | `0xA0` | DALI_INHIBIT                           | Partial    | Timed inhibit flag; no TPI event; no sensor→load automation |
-| `0xA1` | DALI_SCENE                             | Simulated  | Scenes 0–11; member level/colour events; broadcast 255    |
-| `0xA2` | DALI_ARC_LEVEL                         | Simulated  | Mutates + `LEVEL_CHANGE_V2`; unknown → `0xB8`             |
-| `0xA3` | DALI_ON_STEP_UP                        | Simulated  | On-if-off + step                                          |
-| `0xA4` | DALI_STEP_DOWN_OFF                     | Simulated  | Off-at-min                                                |
-| `0xA5` | DALI_UP                                | Simulated  | No ignite from off                                        |
-| `0xA6` | DALI_DOWN                              | Simulated  | Clamps at min                                             |
-| `0xA7` | DALI_RECALL_MAX                        | Simulated  | Per-member max                                            |
-| `0xA8` | DALI_RECALL_MIN                        | Simulated  | Per-member min                                            |
-| `0xA9` | DALI_OFF                               | Simulated  | Level 0                                                   |
-| `0xAA` | DALI_QUERY_LEVEL                       | Partial    | ECG/group mid-fade OK; broadcast 255 not supported        |
+| `0xA1` | DALI_SCENE                             | Simulated  | Scenes 0–11; member level/colour events; ack `NO_ANSWER`  |
+| `0xA2` | DALI_ARC_LEVEL                         | Simulated  | Mutates + `LEVEL_CHANGE_V2`; ack `NO_ANSWER`; bad → `0xB8` |
+| `0xA3` | DALI_ON_STEP_UP                        | Simulated  | On-if-off + step; ack `NO_ANSWER`                         |
+| `0xA4` | DALI_STEP_DOWN_OFF                     | Simulated  | Off-at-min; ack `NO_ANSWER`                               |
+| `0xA5` | DALI_UP                                | Simulated  | No ignite from off; ack `NO_ANSWER`                       |
+| `0xA6` | DALI_DOWN                              | Simulated  | Clamps at min; ack `NO_ANSWER`                            |
+| `0xA7` | DALI_RECALL_MAX                        | Simulated  | Per-member max; ack `NO_ANSWER`                           |
+| `0xA8` | DALI_RECALL_MIN                        | Simulated  | Per-member min; ack `NO_ANSWER`                           |
+| `0xA9` | DALI_OFF                               | Simulated  | Level 0; ack `NO_ANSWER`                                  |
+| `0xAA` | DALI_QUERY_LEVEL                       | Simulated  | ECG/group mid-fade; unknown/empty group answers `0`       |
 | `0xAB` | DALI_QUERY_CONTROL_GEAR_STATUS         | Simulated  | ECG / group / broadcast 255 OR                            |
-| `0xAC` | DALI_QUERY_CG_TYPE                     | Simulated  | 32-bit LE type mask                                       |
+| `0xAC` | DALI_QUERY_CG_TYPE                     | Simulated  | 32-bit LE type mask; non-gear answers all-zero            |
 | `0xAD` | DALI_QUERY_LAST_SCENE                  | Simulated  | ECG or group                                              |
 | `0xAE` | DALI_QUERY_LAST_SCENE_IS_CURRENT       | Simulated  | Cleared by level/colour on members                        |
 | `0xAF` | DALI_QUERY_MIN_LEVEL                   | Simulated  |                                                           |
@@ -202,11 +208,11 @@ Status legend: **Simulated** = responds with some degree of correctness / simula
 | `0xB1` | DALI_QUERY_FADE_RUNNING                | Simulated  | Status bit `0x10`                                         |
 | `0xB2` | DALI_ENABLE_DAPC_SEQ                   | Stub       | Always `NO_ANSWER`; no 250 ms DAPC override               |
 | `0xB4` | DALI_CUSTOM_FADE                       | Simulated  | Fade seconds BE16; query interpolates; V2 = destination   |
-| `0xB5` | DALI_GO_TO_LAST_ACTIVE_LEVEL           | Simulated  | Per-member; fallback 254                                  |
+| `0xB5` | DALI_GO_TO_LAST_ACTIVE_LEVEL           | Simulated  | Per-member; fallback 254; ack `NO_ANSWER`                 |
 | `0xB7` | QUERY_DALI_INSTANCE_LABEL              | Simulated  | ECD wire + instance in data lo                            |
 | `0xB8` | QUERY_DALI_EAN                         | Stub       | Synthetic GTIN `10000000000 + addr` (6-byte BE)           |
 | `0xB9` | QUERY_DALI_SERIAL                      | Simulated  | 8-byte BE serial ECG/ECD                                  |
-| `0xC0` | CHANGE_PROFILE_NUMBER                  | Simulated  | `0xFFFF` → last scheduled; emits profile event            |
+| `0xC0` | CHANGE_PROFILE_NUMBER                  | Simulated  | `0xFFFF` → last scheduled; unknown → `CMD_REFUSED`        |
 | `0xC1` | DALI_STOP_FADE                         | Simulated  | Freezes mid-fade + `LEVEL_CHANGE_V2`                      |
 | `0x02` | QUERY_SCENE_LABEL                      | N/A        | Legacy; use `QUERY_SCENE_LABEL_FOR_GROUP`                 |
 | `0x06` | TRIGGER_SDDP_IDENTIFY                  | No         | Control4 / SDDP out of scope                              |
@@ -224,6 +230,11 @@ Deliberate deviations: broadcast wire **255** only (not **127**); level events
 are `**LEVEL_CHANGE_V2` only**; scene level queries return 16 DALI slots with
 12–15 as `0xFF`; colour-scene unused slots are `0xFF` × 7.
 
+Where the PDF contradicts itself the simulator picks one reading and records the
+conflict in [DOCUMENTATION_ISSUES.md](DOCUMENTATION_ISSUES.md), together with a
+hardware test that would settle it. `tests/test_spec_conformance.py` pins every
+clause the simulator now follows.
+
 #### Events
 
 | Code   | Event                         | Status     | Remarks                               |
@@ -236,7 +247,7 @@ are `**LEVEL_CHANGE_V2` only**; scene level queries return 16 DALI slots with
 | `0x05` | SCENE_CHANGE_EVENT            | Simulated  | Emitted on `DALI_SCENE` / inject      |
 | `0x06` | OCCUPANCY_EVENT               | Partial    | Inject + optional heartbeat; no load  |
 | `0x07` | SYSTEM_VARIABLE_CHANGED_EVENT | Simulated  | On `SET_SYSTEM_VARIABLE` / simulate   |
-| `0x08` | COLOUR_CHANGED_EVENT          | Simulated  | On colour / colour scenes             |
+| `0x08` | COLOUR_CHANGED_EVENT          | Simulated  | Width = channels + 1 for RGB/RGBW     |
 | `0x09` | PROFILE_CHANGED_EVENT         | Simulated  | On profile change / inject            |
-| `0x0A` | GROUP_OCCUPANCY_EVENT         | No         |                                       |
+| `0x0A` | GROUP_OCCUPANCY_EVENT         | Simulated  | State changes only; 30 s hold default |
 | `0x0B` | LEVEL_CHANGE_EVENT_V2         | Simulated  | Sole level-change event used          |

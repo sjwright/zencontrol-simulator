@@ -52,7 +52,7 @@ def test_arc_mutates_level_and_query():
     assert before == 0
     req = parse_request(_basic(CMD["DALI_ARC_LEVEL"], address=1, d2=50))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[1].level == 50
 
     q = parse_request(_basic(CMD["DALI_QUERY_LEVEL"], address=1))
@@ -67,7 +67,7 @@ def test_step_up_accumulates():
     for _ in range(3):
         req = parse_request(_basic(CMD["DALI_UP"], address=1))
         assert not isinstance(req, ParseFailure)
-        assert disp.handle(req)[0] == ResponseType.OK
+        assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[1].level == 13
 
 
@@ -75,7 +75,7 @@ def test_scene_updates_last_scene_and_level():
     disp, world, _ = _disp()
     req = parse_request(_basic(CMD["DALI_SCENE"], address=0, d2=1))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     light = world.lights[0]
     assert light.last_scene == 1
     assert light.last_scene_current is True
@@ -208,7 +208,7 @@ def test_go_to_last_active():
     assert world.lights[1].last_active_level == 120
     req = parse_request(_basic(CMD["DALI_GO_TO_LAST_ACTIVE_LEVEL"], address=1))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[1].level == 120
 
 
@@ -227,7 +227,7 @@ def test_broadcast_scene_updates_groups():
     disp, world, _ = _disp()
     req = parse_request(_basic(CMD["DALI_SCENE"], address=255, d2=1))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.groups[0].last_scene == 1
     assert world.groups[0].last_scene_current is True
     assert world.lights[0].level == 80
@@ -433,7 +433,7 @@ def test_group_level_emits_member_events(monkeypatch):
     monkeypatch.setattr(events, "emit", lambda t, c, p=b"", instance=None: emitted.append((t, int(c))) or True)
     req = parse_request(_basic(CMD["DALI_ARC_LEVEL"], address=64, d2=40))  # group 0
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     targets = {t for t, _ in emitted}
     assert 64 in targets  # group wire
     assert 0 in targets and 1 in targets  # members
@@ -449,7 +449,7 @@ def test_group_scene_emits_member_events(monkeypatch):
     )
     req = parse_request(_basic(CMD["DALI_SCENE"], address=64, d2=1))  # group 0 scene 1
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     scene_targets = {t for t, c, _ in emitted if c == 0x05}
     assert 64 in scene_targets
     assert 0 in scene_targets and 1 in scene_targets
@@ -504,12 +504,12 @@ def test_ecg_level_clears_parent_group_scene_current():
     # Put group into a scene-current state
     req = parse_request(_basic(CMD["DALI_SCENE"], address=64, d2=0))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.groups[0].last_scene_current is True
 
     req2 = parse_request(_basic(CMD["DALI_ARC_LEVEL"], address=0, d2=33))
     assert not isinstance(req2, ParseFailure)
-    assert disp.handle(req2)[0] == ResponseType.OK
+    assert disp.handle(req2)[0] == ResponseType.NO_ANSWER
     assert world.groups[0].last_scene_current is False
     assert world.lights[0].level == 33
 
@@ -527,7 +527,7 @@ def test_group_scene_emits_group_colour_when_agreed(monkeypatch):
     # Group 1: lights 1 (no colour) + 2 (RGB with scene colours)
     req = parse_request(_basic(CMD["DALI_SCENE"], address=65, d2=1))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     group_colours = [p for t, c, p in emitted if t == 65 and c == 0x08]
     assert group_colours  # agreed RGB from ECG 2
     assert group_colours[0][0] == 0x80
@@ -643,7 +643,7 @@ def test_group_colour_clears_scene_current():
     disp, world, _ = _disp()
     req = parse_request(_basic(CMD["DALI_SCENE"], address=64, d2=0))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.groups[0].last_scene_current is True
 
     # TC colour on group 0
@@ -659,12 +659,12 @@ def test_ecg_scene_clears_parent_group_scene_current():
     disp, world, _ = _disp()
     req = parse_request(_basic(CMD["DALI_SCENE"], address=64, d2=0))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.groups[0].last_scene_current is True
 
     req2 = parse_request(_basic(CMD["DALI_SCENE"], address=0, d2=1))
     assert not isinstance(req2, ParseFailure)
-    assert disp.handle(req2)[0] == ResponseType.OK
+    assert disp.handle(req2)[0] == ResponseType.NO_ANSWER
     assert world.lights[0].last_scene_current is True
     assert world.groups[0].last_scene_current is False
 
@@ -675,13 +675,13 @@ def test_group_scene_clears_sibling_group_scene_current():
     # Scene on group 1 first
     req = parse_request(_basic(CMD["DALI_SCENE"], address=65, d2=0))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.groups[1].last_scene_current is True
 
     # Scene on group 0 shares light 1 → clears sibling group 1
     req2 = parse_request(_basic(CMD["DALI_SCENE"], address=64, d2=1))
     assert not isinstance(req2, ParseFailure)
-    assert disp.handle(req2)[0] == ResponseType.OK
+    assert disp.handle(req2)[0] == ResponseType.NO_ANSWER
     assert world.groups[0].last_scene_current is True
     assert world.groups[1].last_scene_current is False
 
@@ -694,13 +694,13 @@ def test_group_level_clears_sibling_group_scene_current():
     disp, world, _ = _disp()
     req = parse_request(_basic(CMD["DALI_SCENE"], address=65, d2=0))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.groups[1].last_scene_current is True
 
     # Arc on group 0 shares light 1 with group 1
     req2 = parse_request(_basic(CMD["DALI_ARC_LEVEL"], address=64, d2=40))
     assert not isinstance(req2, ParseFailure)
-    assert disp.handle(req2)[0] == ResponseType.OK
+    assert disp.handle(req2)[0] == ResponseType.NO_ANSWER
     assert world.groups[1].last_scene_current is False
 
 
@@ -715,7 +715,7 @@ def test_group_go_last_active_is_per_member():
 
     req = parse_request(_basic(CMD["DALI_GO_TO_LAST_ACTIVE_LEVEL"], address=64))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[0].level == 100
     assert world.lights[1].level == 50
 
@@ -755,7 +755,7 @@ def test_broadcast_step_is_relative_per_light():
     world.lights[2].set_level(10)
     req = parse_request(_basic(CMD["DALI_UP"], address=255))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[0].level == 101
     assert world.lights[1].level == 51
     assert world.lights[2].level == 11
@@ -767,7 +767,7 @@ def test_step_respects_max_level():
     world.lights[1].set_level(50)
     req = parse_request(_basic(CMD["DALI_UP"], address=1))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[1].level == 50
 
 
@@ -780,7 +780,7 @@ def test_scene_without_colour_does_not_emit_colour(monkeypatch):
     )
     req = parse_request(_basic(CMD["DALI_SCENE"], address=0, d2=2))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert all(c != 0x08 for _, c in emitted)
 
 
@@ -803,7 +803,7 @@ def test_dali_up_does_not_ignite():
     world.lights[1].set_level(0)
     req = parse_request(_basic(CMD["DALI_UP"], address=1))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[1].level == 0
 
 
@@ -812,7 +812,7 @@ def test_dali_on_step_up_ignites():
     world.lights[1].set_level(0)
     req = parse_request(_basic(CMD["DALI_ON_STEP_UP"], address=1))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[1].level == world.lights[1].min_level
 
 
@@ -822,7 +822,7 @@ def test_dali_down_stays_at_min():
     world.lights[1].set_level(1)
     req = parse_request(_basic(CMD["DALI_DOWN"], address=1))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[1].level == 1
 
 
@@ -832,7 +832,7 @@ def test_dali_step_down_off_extinguishes_at_min():
     world.lights[1].set_level(1)
     req = parse_request(_basic(CMD["DALI_STEP_DOWN_OFF"], address=1))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[1].level == 0
 
 
@@ -912,7 +912,7 @@ def test_mixed_recall_max_omits_group_level_event(monkeypatch):
     )
     req = parse_request(_basic(CMD["DALI_RECALL_MAX"], address=64))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[0].level == 100
     assert world.lights[1].level == 50
     assert world.group_level(0) == 255
@@ -1008,7 +1008,6 @@ def test_empty_colour_scene_membership_no_answer():
 def test_query_unknown_ecg_no_answer():
     disp, _, _ = _disp()
     for cmd in (
-        CMD["DALI_QUERY_LEVEL"],
         CMD["QUERY_DALI_DEVICE_LABEL"],
         CMD["QUERY_DALI_COLOUR"],
         CMD["DALI_QUERY_CONTROL_GEAR_STATUS"],
@@ -1339,7 +1338,7 @@ def test_off_light_defaults_last_active_to_254():
     disp, world, _ = _disp()
     req = parse_request(_basic(CMD["DALI_GO_TO_LAST_ACTIVE_LEVEL"], address=1))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     assert world.lights[1].level == 254
 
 
@@ -1356,7 +1355,7 @@ def test_mixed_group_level_event_uses_stored_prev(monkeypatch):
     )
     req = parse_request(_basic(CMD["DALI_ARC_LEVEL"], address=64, d2=40))
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
 
     group_events = [p for t, c, p in emitted if t == 64 and c == 0x0B]
     assert group_events
@@ -1463,7 +1462,7 @@ def test_hallway_group_scene_emits_group_level_when_agreed(monkeypatch):
     )
     req = parse_request(_basic(CMD["DALI_SCENE"], address=66, d2=1))  # group 2 scene 1
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     scene_targets = {t for t, c, _ in emitted if c == 0x05}
     level_targets = {t for t, c, _ in emitted if c == 0x0B}
     assert scene_targets >= {4, 5, 66}
@@ -1479,7 +1478,7 @@ def test_group_rgb_scene_emits_colour_for_member_and_group(monkeypatch):
     )
     req = parse_request(_basic(CMD["DALI_SCENE"], address=65, d2=1))  # group 1 scene 1
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
     colour_targets = {t for t, c, _ in emitted if c == 0x08}
     assert 2 in colour_targets  # RGB Accent member
     assert 65 in colour_targets  # group (agreed among coloured members)

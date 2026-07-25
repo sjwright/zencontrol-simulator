@@ -126,7 +126,7 @@ def test_arc_level_emits_event(dispatcher, monkeypatch):
     req = parse_request(_basic(CMD["DALI_ARC_LEVEL"], address=0, d2=100))
     assert req is not None and not isinstance(req, ParseFailure)
     resp = disp.handle(req)
-    assert resp[0] == ResponseType.OK
+    assert resp[0] == ResponseType.NO_ANSWER
     assert world.lights[0].level == 100
     assert emitted[0] == (0, 0x0B, bytes([before, 100]))
 

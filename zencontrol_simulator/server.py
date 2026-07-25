@@ -20,6 +20,7 @@ from .protocol import (
 )
 from .world import (
     FADE_PROGRESS_INTERVAL_S,
+    GROUP_OCCUPANCY_INTERVAL_S,
     SYSVAR_SIMULATE_INTERVAL,
     Colour,
     LevelChange,
@@ -79,6 +80,7 @@ class Simulator:
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._sysvar_sim_task: asyncio.Task[None] | None = None
         self._fade_progress_task: asyncio.Task[None] | None = None
+        self._group_occupancy_task: asyncio.Task[None] | None = None
 
     @property
     def bind_port(self) -> int:
@@ -168,9 +170,18 @@ class Simulator:
             self._fade_progress_loop(),
             name="zencontrol-fade-progress",
         )
+        self._group_occupancy_task = asyncio.create_task(
+            self._group_occupancy_loop(),
+            name="zencontrol-group-occupancy",
+        )
 
     async def stop(self) -> None:
-        for attr in ("_fade_progress_task", "_sysvar_sim_task", "_heartbeat_task"):
+        for attr in (
+            "_group_occupancy_task",
+            "_fade_progress_task",
+            "_sysvar_sim_task",
+            "_heartbeat_task",
+        ):
             task = getattr(self, attr)
             if task is not None:
                 task.cancel()
@@ -284,6 +295,15 @@ class Simulator:
         while True:
             await asyncio.sleep(FADE_PROGRESS_INTERVAL_S)
             self.tick_fade_progress()
+
+    def tick_group_occupancy(self) -> list[int]:
+        """Emit GROUP_OCCUPANCY "not occupied" for groups past their hold."""
+        return self.events.expire_group_occupancy()
+
+    async def _group_occupancy_loop(self) -> None:
+        while True:
+            await asyncio.sleep(GROUP_OCCUPANCY_INTERVAL_S)
+            self.tick_group_occupancy()
 
     async def run_forever(self, *, interactive: bool = False) -> None:
         await self.start()

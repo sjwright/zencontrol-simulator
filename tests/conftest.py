@@ -13,6 +13,11 @@ from zencontrol_simulator.world import World, load_world
 
 CONFIG = Path(__file__).resolve().parents[1] / "config.yaml"
 
+# The first-generation DALI lighting commands (arc/scene/up/down/off/recall/...)
+# acknowledge with REPLY_NO_ANSWER rather than REPLY_OK, which zencontrol-python
+# maps to False for return_type='ok'. See handlers.LEGACY_ACK_COMMANDS.
+LEGACY_ACK = False
+
 
 @dataclass(slots=True)
 class LiveProtocol:

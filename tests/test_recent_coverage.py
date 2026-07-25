@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from zencontrol_simulator.events import EventEmitter
+from conftest import LEGACY_ACK
 from zencontrol_simulator.handlers import CMD, CommandDispatcher
 from zencontrol_simulator.protocol import ParseFailure, ResponseType, checksum, parse_request
 from zencontrol_simulator.server import Simulator
@@ -270,7 +271,7 @@ async def test_live_dim_time_scene_fades(live_protocol, monkeypatch):
     base = 2_400_000_000.0
     monkeypatch.setattr(time_mod, "time", lambda: base)
 
-    assert await p.dali_scene(live_protocol.ecg(0), 1) is True
+    assert await p.dali_scene(live_protocol.ecg(0), 1) is LEGACY_ACK
     assert world.lights[0].fading_until is not None
     assert world.lights[0].fade_to == 80
 
@@ -365,7 +366,7 @@ def test_group_scene_event_order_includes_colour(monkeypatch):
     )
     req = parse_request(_basic(CMD["DALI_SCENE"], address=65, d2=1))  # group 1
     assert not isinstance(req, ParseFailure)
-    assert disp.handle(req)[0] == ResponseType.OK
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
 
     codes_by_target: dict[int, list[int]] = {}
     for t, c, _ in emitted:
@@ -398,7 +399,7 @@ async def test_live_group_scene_colour_and_scene_events(live_protocol):
     await p.start_event_monitoring()
     await _wait(0.25)
 
-    assert await p.dali_scene(live_protocol.group(1), 1) is True
+    assert await p.dali_scene(live_protocol.group(1), 1) is LEGACY_ACK
     await _wait(0.4)
 
     assert any(t == "GROUP" and n == 1 and s == 1 for t, n, s in scenes)
