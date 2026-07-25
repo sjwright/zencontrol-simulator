@@ -6,6 +6,3 @@ dist/
 build/
 .pytest_cache/
 .DS_Store
-
-# Vendor protocol PDF (not redistributed)
-Advanced_Third_Party_Interface_API_Document*.pdf

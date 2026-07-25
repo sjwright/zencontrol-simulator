@@ -128,10 +128,12 @@ LEGACY_ACK_COMMANDS = frozenset(
 )
 
 MAX_SCENE = 12
-# Zencontrol has 12 scenes (0–11). Do not confuse with the 16-byte answer from
-# QUERY_SCENE_LEVELS_BY_ADDRESS: that is the DALI gear scene table (slots 0–15);
-# slots 12–15 are unused padding (0xFF), not extra Zencontrol scenes. Colour
-# scene opcodes only cover 0–7 and 8–11; dali_scene / group labels use 0–11.
+# Zencontrol names 12 scenes (0–11) in the cloud: colour scene opcodes cover
+# 0–7 and 8–11, and group scene labels stop at the same place. The DALI gear
+# scene table underneath holds 16 (see QUERY_SCENE_LEVELS_BY_ADDRESS), and the
+# PDF neither states a ceiling for DALI_SCENE nor says whether slots 12–15 are
+# reachable — its own example shows levels in 14 and 15. We cap at the cloud
+# layer pending hardware confirmation (DOCUMENTATION_ISSUES.md §1.1).
 SCENE_LEVEL_SLOTS = 16
 
 

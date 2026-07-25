@@ -399,7 +399,9 @@ def test_sensor_without_group_target_emits_no_group_event(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Scene ceiling (see DOCUMENTATION_ISSUES.md: the PDF says 0–11, 0–12 and 0–15)
+# Scene ceiling. The PDF describes a 16-slot DALI scene table under a cloud
+# layer that names 12, without stating how they relate or where DALI_SCENE
+# stops; we cap at the cloud layer (DOCUMENTATION_ISSUES.md §1.1).
 # ---------------------------------------------------------------------------
 
 

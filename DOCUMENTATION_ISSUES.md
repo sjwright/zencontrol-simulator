@@ -4,9 +4,10 @@ Findings from implementing a full simulator against *Advanced Third Party
 Interface API Document* (20-11-2025). Each entry states the conflicting text,
 what this simulator does, and a hardware test that would settle it.
 
-Section 1 lists places where the document contradicts itself or another section.
-Section 2 lists behaviour that is unstated and had to be guessed. Section 3 is a
-single script that runs every test below.
+Section 1 lists places where the document contradicts itself, or reads as a
+contradiction because two different things share one name. Section 2 lists
+behaviour that is unstated and had to be guessed. Section 3 is a single script
+that runs every test below.
 
 Throughout, `A0`–`A63` are control gear, `G0`–`G15` are groups (wire `64+n`),
 `ECD0`–`ECD63` are control devices (wire `64+n`).
@@ -15,32 +16,66 @@ Throughout, `A0`–`A63` are control gear, `G0`–`G15` are groups (wire `64+n`)
 
 ## 1. Self-contradictions
 
-### 1.1 Scene numbering: 0–11, 0–12, or 0–15?
+### 1.1 Scene numbering: two layers, never described as such
 
-Three different ranges appear:
+The document uses "scene number" for two different things without saying so, and
+an implementer reading it end to end sees 0–12 and 0–15 in the same role.
 
-| Location | Range implied |
-| --- | --- |
-| `QUERY_SCENE_LABEL`, `QUERY_SCENE_LABEL_FOR_GROUP` | "scene 0–12" (13 scenes) |
-| `QUERY_SCENE_LEVELS_BY_ADDRESS` | 16 returned bytes (16 scenes) |
-| `SCENE_CHANGE_EVENT` | scene byte, no stated ceiling |
+| Command / event | Range | Layer |
+| --- | --- | --- |
+| `QUERY_SCENE_LEVELS_BY_ADDRESS` | 0–15 | DALI gear scene table |
+| `QUERY_SCENE_NUMBERS_BY_ADDRESS` | no ceiling stated | DALI gear scene table |
+| `QUERY_SCENE_NUMBERS_FOR_GROUP` | 16-bit bitmask, "(8-15)" + "(0-7)" | DALI, cloud-filtered |
+| `SCENE_CHANGE_EVENT` | "(0-15)" | DALI |
+| `DALI_SCENE` | no ceiling stated | DALI |
+| `QUERY_SCENE_LABEL` | "0-12" | cloud |
+| `QUERY_SCENE_LABEL_FOR_GROUP` | "0-12" | cloud |
+| `QUERY_COLOUR_SCENE_0_7` + `_8_11` | 0–11 | cloud |
 
-These cannot all be right. Our reading is that Zencontrol exposes **12** scenes
-(0–11) and that the 16-byte answer is the raw DALI gear scene table, whose slots
-12–15 are unused. If so, "0–12" is an off-by-one in the label commands.
+Reading it as two layers resolves the apparent conflict: **16 DALI scenes exist
+on the gear, and a subset can be named in the cloud.** The document supports
+this — `QUERY_SCENE_LEVELS_BY_ADDRESS` says "the 16 dali scenes supported by a
+control gear", while every "0-12" sits next to a cloud caveat
+("Must be set up in the cloud", "Must be a named scene on the cloud"). It just
+never states the relationship.
 
-**Ask:** state the Zencontrol scene count once, and say explicitly that
-`QUERY_SCENE_LEVELS_BY_ADDRESS` returns the 16-slot DALI table rather than 16
-Zencontrol scenes.
+Decisively, the `QUERY_SCENE_LEVELS_BY_ADDRESS` example carries real levels in
+the top slots — scene 13 is `0xFF` "(no scene)" while 12, 14 and 15 hold `0x28`,
+`0x17` and `0xEF`. So `0xFF` means "this gear is not in that scene", not "this
+slot does not exist", and slots 12–15 are ordinary scenes.
+
+Two things still look wrong:
+
+1. **The cloud ceiling is probably 0–11, not 0–12.** The colour scene commands
+   enumerate rather than state a range, and stop at 11 with nothing covering
+   12–15. If the cloud allowed 0–12 there would be a scene 12 that can be
+   labelled but can never hold colour data. Twelve scenes numbered 0–11 makes
+   the colour pair land exactly and makes "0-12" an inclusive-range off-by-one.
+2. **`DALI_SCENE` has no documented ceiling.** If all 16 DALI scenes are
+   recallable it presumably accepts 0–15, but nothing says so.
+
+**Ask:** state that there are 16 DALI scenes of which a subset are nameable in
+the cloud; correct "0-12" to "0-11" if the cloud limit is twelve scenes; and give
+`DALI_SCENE` an explicit range.
+
+Simulator note: we currently reject `DALI_SCENE` above 11 with `INVALID_ARGS`
+and pad `QUERY_SCENE_LEVELS_BY_ADDRESS` slots 12–15 with `0xFF`. The example
+above suggests both are wrong, but `zencontrol-python` cannot send scene 12+
+anyway, so this waits on the hardware test.
 
 ```
+# where does the DALI layer stop?
 for s in 0..15:
-    r = DALI_SCENE(A0, s)
-    print s, r.type, r.data        # first s that is REPLY_ERROR/INVALID_ARGS is the ceiling
+    print s, DALI_SCENE(A0, s).type      # first ERROR/INVALID_ARGS is the ceiling
 
-levels = QUERY_SCENE_LEVELS_BY_ADDRESS(A0)
-print len(levels), levels[12:16]   # expect 16 and 0xFF padding if the ceiling is 12
-print QUERY_SCENE_LABEL_FOR_GROUP(G0, 12).type   # ANSWER here would prove 0-12 is real
+# do the top slots hold real levels, or are they always 0xFF?
+print QUERY_SCENE_LEVELS_BY_ADDRESS(A_with_scene_14_set)[12:16]
+print QUERY_SCENE_NUMBERS_BY_ADDRESS(A_with_scene_14_set)   # does 14 appear?
+
+# where does the cloud layer stop?
+for s in 11..13:
+    print s, QUERY_SCENE_LABEL_FOR_GROUP(G0, s).type   # ANSWER at 12 proves 0-12 is real
+print QUERY_COLOUR_SCENE_MEMBERSHIP_BY_ADDR(A_rgb)     # any scene > 11 listed?
 ```
 
 ### 1.2 `QUERY_GROUP_LABEL` with an empty label: ANSWER or NO_ANSWER?
@@ -286,9 +321,11 @@ sleep 12; print QUERY_DALI_LEVEL(A0)   # 254
 ```
 report = {}
 
-# 1.1 scene ceiling
-report.scene_ceiling = first(s for s in 0..15 if DALI_SCENE(A0, s).type == ERROR)
-report.scene_levels  = QUERY_SCENE_LEVELS_BY_ADDRESS(A0)
+# 1.1 scene layers: DALI ceiling, cloud ceiling, and the top level slots
+report.dali_ceiling  = first(s for s in 0..15 if DALI_SCENE(A0, s).type == ERROR)
+report.cloud_ceiling = first(s for s in 0..15
+                             if QUERY_SCENE_LABEL_FOR_GROUP(G0, s).type == ERROR)
+report.top_slots     = QUERY_SCENE_LEVELS_BY_ADDRESS(A_with_scene_14_set)[12:16]
 
 # 1.2 / 1.3 empty labels
 report.group_label  = QUERY_GROUP_LABEL(G_blank).type
