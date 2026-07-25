@@ -23,7 +23,7 @@ dev = [
 ]
 # Live protocol / dump tools: PyPI pin, or editable checkout via setup-venv.sh
 live = [
-    "zencontrol-python>=0.1.6",
+    "zencontrol-python>=0.1.7",
 ]
 
 [project.scripts]

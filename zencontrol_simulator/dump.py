@@ -446,7 +446,7 @@ async def _dump(args: argparse.Namespace) -> None:
     async with ZenProtocol(print_traffic=False) as tpi:
         ctrl = ZenController(
             protocol=tpi,
-            id="1",
+            id=1,
             name="dump",
             label="",
             host=args.ip,

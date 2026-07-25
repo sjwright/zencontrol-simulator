@@ -74,8 +74,7 @@ class LiveProtocol:
 async def live_protocol():
     """Start simulator on an ephemeral port and a ZenProtocol unicast client."""
     pytest.importorskip("zencontrol")
-    from zencontrol import ZenProtocol
-    from zencontrol.api.models import ZenController
+    from zencontrol import ZenController, ZenProtocol
 
     world = load_world(CONFIG)
     world.bind_host = "127.0.0.1"
@@ -90,7 +89,7 @@ async def live_protocol():
 
     protocol = ZenProtocol(unicast=True, listen_ip="127.0.0.1", listen_port=0)
     controller = ZenController(
-        id="1",
+        id=1,
         name="sim",
         label="Sim",
         host="127.0.0.1",

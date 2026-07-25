@@ -94,7 +94,7 @@ Without zencontrol-python installed, unit/state tests still run; live protocol
 tests in `tests/test_protocol_live.py` skip via `importorskip`. Those tests
 start the simulator on an ephemeral port and drive it through
 `zencontrol.ZenProtocol` (unicast TPI Advanced). The `live` extra pulls
-`zencontrol-python>=0.1.6` from PyPI when you are not using an editable checkout.
+`zencontrol-python>=0.1.7` from PyPI when you are not using an editable checkout.
 
 `tests/test_demo_permutations.py` exercises the expanded demo world: hallway
 group overlap, switching gear, second TC/RGB/XY fixtures, ECD pad shapes,
