@@ -51,6 +51,7 @@ CMD = {
     "QUERY_CONTROLLER_VERSION_NUMBER": 0x1C,
     "QUERY_CONTROL_GEAR_DALI_ADDRESSES": 0x1D,
     "QUERY_SCENE_LEVELS_BY_ADDRESS": 0x1E,
+    "QUERY_INSTANCE_GROUPS": 0x21,
     "QUERY_DALI_FITTING_NUMBER": 0x22,
     "QUERY_DALI_INSTANCE_FITTING_NUMBER": 0x23,
     "QUERY_CONTROLLER_LABEL": 0x24,
@@ -71,6 +72,7 @@ CMD = {
     "SET_TPI_EVENT_UNICAST_ADDRESS": 0x40,
     "QUERY_TPI_EVENT_UNICAST_ADDRESS": 0x41,
     "QUERY_SYSTEM_VARIABLE_NAME": 0x42,
+    "QUERY_PROFILE_INFORMATION": 0x43,
     "QUERY_COLOUR_SCENE_MEMBERSHIP_BY_ADDR": 0x44,
     "QUERY_COLOUR_SCENE_0_7_DATA_FOR_ADDR": 0x45,
     "QUERY_COLOUR_SCENE_8_11_DATA_FOR_ADDR": 0x46,
@@ -184,10 +186,12 @@ class CommandDispatcher:
                   lambda r: _label_answer(r.seq, w.label))
         self._reg(CMD["QUERY_CONTROLLER_FITTING_NUMBER"],
                   lambda r: _label_answer(r.seq, w.fitting_number or "1"))
-        self._reg(CMD["QUERY_CONTROLLER_STARTUP_COMPLETE"],
-                  lambda r: _ok(r.seq) if w.startup_complete else _no_answer(r.seq))
-        self._reg(CMD["QUERY_IS_DALI_READY"],
-                  lambda r: _ok(r.seq) if w.dali_ready else _no_answer(r.seq))
+        self._reg(
+            CMD["QUERY_CONTROLLER_STARTUP_COMPLETE"],
+            lambda r: _ok(r.seq) if w.is_startup_complete() else _no_answer(r.seq),
+        )
+        # No DALI bus fault model — always ready.
+        self._reg(CMD["QUERY_IS_DALI_READY"], lambda r: _ok(r.seq))
         # Operating mode: always default 0 (no manufacturer modes modelled)
         self._reg(CMD["QUERY_OPERATING_MODE_BY_ADDRESS"], self._query_operating_mode)
         # Button LED: static stubs (no physical LED model)
@@ -214,6 +218,7 @@ class CommandDispatcher:
         self._reg(CMD["QUERY_SCENE_LABEL_FOR_GROUP"], self._query_scene_label_for_group)
 
         self._reg(CMD["QUERY_PROFILE_NUMBERS"], self._query_profile_numbers)
+        self._reg(CMD["QUERY_PROFILE_INFORMATION"], self._query_profile_information)
         self._reg(CMD["QUERY_PROFILE_LABEL"], self._query_profile_label)
         self._reg(CMD["QUERY_CURRENT_PROFILE_NUMBER"],
                   lambda r: _answer(r.seq, int_to_be(w.current_profile, 2)))
@@ -263,6 +268,7 @@ class CommandDispatcher:
 
         self._reg(CMD["QUERY_DALI_ADDRESSES_WITH_INSTANCES"], self._query_addresses_with_instances)
         self._reg(CMD["QUERY_INSTANCES_BY_ADDRESS"], self._query_instances)
+        self._reg(CMD["QUERY_INSTANCE_GROUPS"], self._query_instance_groups)
         self._reg(CMD["QUERY_DALI_INSTANCE_LABEL"], self._query_instance_label)
         self._reg(CMD["QUERY_OCCUPANCY_INSTANCE_TIMERS"], self._query_occupancy_timers)
 
@@ -443,13 +449,16 @@ class CommandDispatcher:
 
     def _query_group_by_number(self, request: Request) -> bytes:
         # Address byte is group number 0–15 (not wire 64–79).
+        # PDF: no members → NO_ANSWER.
         group_num = self._addr(request)
         group = self.world.group(group_num)
         if group is None:
             return _no_answer(request.seq)
         members = self.world.lights_in_group(group_num)
-        level = max((m.visible_level() for m in members), default=0)
-        # Occupancy always asserted; level is brightest member (else 0).
+        if not members:
+            return _no_answer(request.seq)
+        level = max(m.visible_level() for m in members)
+        # Occupancy byte is stubbed True (no GROUP_OCCUPANCY model yet).
         return _answer(request.seq, bytes([group_num & 0xFF, 0x01, level & 0xFF]))
 
     def _query_group_label(self, request: Request) -> bytes:
@@ -483,6 +492,22 @@ class CommandDispatcher:
             out.extend(int_to_be(number, 2))
         if not out:
             return _no_answer(request.seq)
+        return _answer(request.seq, bytes(out))
+
+    def _query_profile_information(self, request: Request) -> bytes:
+        # Header: current / last-scheduled / overridden UTC / scheduled UTC, then
+        # 3-byte records (profile BE16 + behaviour) per PDF QUERY_PROFILE_INFORMATION.
+        if not self.world.profiles:
+            return _no_answer(request.seq)
+        out = bytearray()
+        out.extend(int_to_be(self.world.current_profile, 2))
+        out.extend(int_to_be(self.world.last_scheduled_profile, 2))
+        out.extend(int_to_be(self.world.last_overridden_profile_utc & 0xFFFFFFFF, 4))
+        out.extend(int_to_be(self.world.last_scheduled_profile_utc & 0xFFFFFFFF, 4))
+        for number in sorted(self.world.profiles.keys()):
+            profile = self.world.profiles[number]
+            out.extend(int_to_be(number, 2))
+            out.append(profile.behaviour & 0xFF)
         return _answer(request.seq, bytes(out))
 
     def _query_profile_label(self, request: Request) -> bytes:
@@ -821,6 +846,16 @@ class CommandDispatcher:
         if inst is None:
             return _no_answer(request.seq)
         return _label_answer(request.seq, inst.label)
+
+    def _query_instance_groups(self, request: Request) -> bytes:
+        inst = self._instance_from_request(request)
+        if inst is None:
+            return _no_answer(request.seq)
+        primary, first, second = inst.groups
+        return _answer(
+            request.seq,
+            bytes([primary & 0xFF, first & 0xFF, second & 0xFF]),
+        )
 
     def _query_occupancy_timers(self, request: Request) -> bytes:
         inst = self._instance_from_request(request)

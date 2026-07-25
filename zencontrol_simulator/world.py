@@ -383,6 +383,8 @@ class Instance:
     error: bool = False
     # Last absolute-input value (0–65535); None until an inject/event sets it.
     value: int | None = None
+    # QUERY_INSTANCE_GROUPS: primary / first / second (0–15, or 0xFF = none).
+    groups: tuple[int, int, int] = (0xFF, 0xFF, 0xFF)
 
 
 @dataclass(slots=True)
@@ -397,6 +399,8 @@ class Device:
 class Profile:
     number: int
     label: str
+    # QUERY_PROFILE_INFORMATION behaviour byte (bit0=disabled, bits1–2=priority).
+    behaviour: int = 0
 
 
 @dataclass(slots=True)
@@ -462,6 +466,27 @@ class World:
     dim_time_ms: int = 0
     # First segment of fitting numbers (PDF QUERY_CONTROLLER_FITTING_NUMBER / defaults).
     fitting_number: str = "1"
+    # UTC seconds for QUERY_PROFILE_INFORMATION header fields.
+    last_overridden_profile_utc: int = 0
+    last_scheduled_profile_utc: int = 0
+    # CLI -s N: QUERY_CONTROLLER_STARTUP_COMPLETE stays incomplete until this
+    # many seconds after started_at (process/sim start).
+    startup_delay_s: float = 0.0
+    started_at: float | None = None
+
+    def is_startup_complete(self) -> bool:
+        """Effective startup flag for QUERY_CONTROLLER_STARTUP_COMPLETE.
+
+        YAML/runtime ``startup_complete`` must be True, and any ``startup_delay_s``
+        must have elapsed since ``started_at``.
+        """
+        if not self.startup_complete:
+            return False
+        if self.startup_delay_s <= 0:
+            return True
+        if self.started_at is None:
+            return False
+        return time.time() >= self.started_at + self.startup_delay_s
 
     def light(self, address: int) -> Light | None:
         return self.lights.get(address)
@@ -1059,6 +1084,22 @@ def load_world(path: str | Path) -> World:
                 # Occupancy sensors need timers for zencontrol-python interview()
                 timers = InstanceTimers()
 
+            groups_raw = inst.get("groups")
+            if groups_raw is None:
+                inst_groups = (0xFF, 0xFF, 0xFF)
+            else:
+                vals = [int(x) for x in groups_raw]
+                if len(vals) != 3:
+                    raise ValueError(
+                        f"Instance {addr}.{number} groups must be [primary, first, second]"
+                    )
+                for g in vals:
+                    if not (0 <= g <= 15 or g == 0xFF):
+                        raise ValueError(
+                            f"Instance {addr}.{number} group target must be 0-15 or 255, got {g}"
+                        )
+                inst_groups = (vals[0], vals[1], vals[2])
+
             instances.append(
                 Instance(
                     number=number,
@@ -1067,6 +1108,7 @@ def load_world(path: str | Path) -> World:
                     timers=timers,
                     active=bool(inst.get("active", True)),
                     error=bool(inst.get("error", False)),
+                    groups=inst_groups,
                 )
             )
         devices[addr] = Device(
@@ -1083,6 +1125,7 @@ def load_world(path: str | Path) -> World:
         profiles[number] = Profile(
             number=number,
             label=str(item.get("label", f"Profile {number}")),
+            behaviour=_as_int(item.get("behaviour")) & 0xFF,
         )
 
     sysvars: dict[int, SystemVariable] = {}
@@ -1137,6 +1180,12 @@ def load_world(path: str | Path) -> World:
         ),
         dim_time_ms=max(0, _as_int(ctrl.get("dim_time_ms"), 0)),
         fitting_number=str(ctrl.get("fitting_number", "1")),
+        last_overridden_profile_utc=_as_int(
+            profiles_section.get("last_overridden_utc"), 0
+        ),
+        last_scheduled_profile_utc=_as_int(
+            profiles_section.get("last_scheduled_utc"), 0
+        ),
     )
     _validate_world(world)
     return world

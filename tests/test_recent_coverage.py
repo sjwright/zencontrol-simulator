@@ -75,7 +75,8 @@ async def test_live_scene_numbers_by_address(live_protocol):
 # ---------------------------------------------------------------------------
 
 
-def test_group_by_number_empty_members_level_zero():
+def test_group_by_number_empty_members_no_answer():
+    """PDF QUERY_GROUP_BY_NUMBER: no members → NO_ANSWER."""
     disp, world, _ = _disp()
     # Detach all members from group 4
     for light in list(world.lights.values()):
@@ -84,8 +85,7 @@ def test_group_by_number_empty_members_level_zero():
     req = parse_request(_basic(CMD["QUERY_GROUP_BY_NUMBER"], address=4))
     assert not isinstance(req, ParseFailure)
     resp = disp.handle(req)
-    assert resp[0] == ResponseType.ANSWER
-    assert resp[3:6] == bytes([4, 0x01, 0x00])
+    assert resp[0] == ResponseType.NO_ANSWER
 
 
 def test_group_by_number_uses_visible_mid_fade(monkeypatch):
@@ -326,6 +326,30 @@ def test_query_last_known_button_led_returns_off():
     assert resp[2] == 1 and resp[3] == 0x01  # Instance Binary State Off (docs example)
 
 
+def test_query_instance_groups_from_yaml():
+    disp, world, _ = _disp()
+    assert world.instance(0, 0).groups == (0, 1, 255)
+    req = parse_request(_basic(CMD["QUERY_INSTANCE_GROUPS"], address=64, d2=0))
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ANSWER
+    assert list(resp[3:6]) == [0, 1, 255]
+
+
+def test_query_profile_information_header_and_behaviours():
+    disp, world, _ = _disp()
+    req = parse_request(_basic(CMD["QUERY_PROFILE_INFORMATION"]))
+    assert not isinstance(req, ParseFailure)
+    resp = disp.handle(req)
+    assert resp[0] == ResponseType.ANSWER
+    body = resp[3:-1]
+    assert body[0:2] == bytes([(world.current_profile >> 8) & 0xFF, world.current_profile & 0xFF])
+    assert int.from_bytes(body[4:8], "big") == world.last_overridden_profile_utc
+    assert int.from_bytes(body[8:12], "big") == world.last_scheduled_profile_utc
+    # First profile record after 12-byte header
+    assert body[12:15] == bytes([0, 1, world.profiles[1].behaviour])
+
+
 # ---------------------------------------------------------------------------
 # Group scene companion events (scene + level + colour)
 # ---------------------------------------------------------------------------
@@ -398,5 +422,5 @@ async def test_live_readiness_stubs_toggle(live_protocol):
     live_protocol.world.startup_complete = False
     assert await p.query_controller_startup_complete(c) is not True
     live_protocol.world.startup_complete = True
-    live_protocol.world.dali_ready = False
-    assert await p.query_is_dali_ready(c) is not True
+    live_protocol.world.dali_ready = False  # ignored — always OK
+    assert await p.query_is_dali_ready(c) is True

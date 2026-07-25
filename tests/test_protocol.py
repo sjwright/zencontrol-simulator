@@ -8,6 +8,7 @@ from zencontrol_simulator.events import EventEmitter
 from zencontrol_simulator.handlers import CMD, CommandDispatcher
 from zencontrol_simulator.protocol import (
     ErrorCode,
+    EventCode,
     ParseFailure,
     ResponseType,
     build_error,
@@ -318,9 +319,16 @@ def test_ecd_device_label_query(dispatcher):
     assert resp[3:-1] == b"Living Room Switch"
 
 
-def test_xy_colour_roundtrip(dispatcher):
-    disp, world, _ = dispatcher
-    # XY 0x10, x=12345, y=23456
+def test_xy_colour_roundtrip(dispatcher, monkeypatch):
+    disp, world, events = dispatcher
+    level_before = world.lights[3].level
+    emitted: list[int] = []
+    monkeypatch.setattr(
+        events,
+        "emit",
+        lambda t, c, p=b"", instance=None: emitted.append(int(c)) or True,
+    )
+    # XY 0x10, x=12345, y=23456 — arc 0xFF = colour-only (level unchanged)
     colour = bytes([0x10, 0x30, 0x39, 0x5B, 0xA0])
     packet = bytearray([0x04, 1, CMD["DALI_COLOUR"], 3, 0xFF])
     packet.extend(colour)
@@ -332,6 +340,9 @@ def test_xy_colour_roundtrip(dispatcher):
     assert world.lights[3].colour.type == "xy"
     assert world.lights[3].colour.x == 12345
     assert world.lights[3].colour.y == 23456
+    assert world.lights[3].level == level_before
+    assert EventCode.COLOUR_CHANGE in emitted
+    assert EventCode.LEVEL_CHANGE_V2 not in emitted
 
     q = parse_request(_basic(CMD["QUERY_DALI_COLOUR"], address=3))
     assert not isinstance(q, ParseFailure)
@@ -341,18 +352,18 @@ def test_xy_colour_roundtrip(dispatcher):
     assert (resp[4] << 8) | resp[5] == 12345
 
 
-def test_startup_and_dali_ready_no_answer(dispatcher):
+def test_startup_no_answer_and_dali_always_ready(dispatcher):
+    # PDF: startup incomplete → NO_ANSWER. Simulator has no DALI fault → always OK.
     disp, world, _ = dispatcher
     world.startup_complete = False
     req = parse_request(_basic(CMD["QUERY_CONTROLLER_STARTUP_COMPLETE"]))
     assert not isinstance(req, ParseFailure)
     assert disp.handle(req)[0] == ResponseType.NO_ANSWER
 
-    world.startup_complete = True
-    world.dali_ready = False
+    world.dali_ready = False  # YAML flag ignored — bus is always ready
     req2 = parse_request(_basic(CMD["QUERY_IS_DALI_READY"]))
     assert not isinstance(req2, ParseFailure)
-    assert disp.handle(req2)[0] == ResponseType.NO_ANSWER
+    assert disp.handle(req2)[0] == ResponseType.OK
 
 
 def test_xy_features_bit(dispatcher):

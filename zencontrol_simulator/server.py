@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import socket
+import time
 
 from .events import EventEmitter
 from .handlers import CommandDispatcher
@@ -87,6 +88,14 @@ class Simulator:
         return self.world.bind_port
 
     async def start(self) -> None:
+        # Anchor startup-delay clock if CLI/main did not already set process start.
+        if self.world.started_at is None:
+            self.world.started_at = time.time()
+        if self.world.startup_delay_s > 0:
+            logger.info(
+                "Startup delay %.1fs — QUERY_CONTROLLER_STARTUP_COMPLETE incomplete until then",
+                self.world.startup_delay_s,
+            )
         loop = asyncio.get_running_loop()
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

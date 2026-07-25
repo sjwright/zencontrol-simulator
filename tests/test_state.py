@@ -156,6 +156,31 @@ def test_unicast_dynamic_roundtrip():
     assert list(resp[3:-1][3:7]) == [192, 168, 1, 10]
 
 
+def test_unicast_clear_roundtrip():
+    """Sim extension: 0.0.0.0 / port 0 clears unicast (not described in PDF set example)."""
+    disp, world, _ = _disp()
+    set_req = parse_request(
+        _dynamic(CMD["SET_TPI_EVENT_UNICAST_ADDRESS"], bytes([0x1B, 0x39, 10, 0, 0, 1]))
+    )
+    assert not isinstance(set_req, ParseFailure)
+    assert disp.handle(set_req)[0] == ResponseType.OK
+    assert world.unicast_ip == "10.0.0.1"
+
+    clear = parse_request(_dynamic(CMD["SET_TPI_EVENT_UNICAST_ADDRESS"], bytes(6)))
+    assert not isinstance(clear, ParseFailure)
+    assert disp.handle(clear)[0] == ResponseType.OK
+    assert world.unicast_ip is None
+    assert world.unicast_port == 0
+
+    q = parse_request(_basic(CMD["QUERY_TPI_EVENT_UNICAST_ADDRESS"]))
+    assert not isinstance(q, ParseFailure)
+    resp = disp.handle(q)
+    assert resp[0] == ResponseType.ANSWER
+    body = resp[3:-1]
+    assert body[1:3] == bytes([0, 0])
+    assert list(body[3:7]) == [0, 0, 0, 0]
+
+
 def test_event_mode_zero_suppresses(monkeypatch):
     disp, world, events = _disp()
     world.event_mode = 0x00
@@ -227,6 +252,27 @@ def test_occupy_resets_last_detect():
     inst.timers.last_motion_at = time.time() - 99
     assert events.occupancy(0, 2, occupied=True) is True
     assert inst.timers.seconds_since_detect() <= 1
+
+
+def test_occupy_false_skips_note_motion_but_uses_docs_payload(monkeypatch):
+    """PDF: instance OCCUPANCY has no 'not detected'; byte2 is unused (0x01)."""
+    from zencontrol_simulator.events import EventEmitter
+    from zencontrol_simulator.protocol import EventCode
+
+    world = load_world(CONFIG)
+    events = EventEmitter(world)
+    inst = world.instance(0, 2)
+    assert inst is not None and inst.timers is not None
+    inst.timers.last_motion_at = time.time() - 99
+    emitted = []
+    monkeypatch.setattr(
+        events,
+        "emit",
+        lambda t, c, p=b"", instance=None: emitted.append((t, int(c), bytes(p))) or True,
+    )
+    assert events.occupancy(0, 2, occupied=False) is True
+    assert inst.timers.seconds_since_detect() >= 90
+    assert emitted == [(64, EventCode.IS_OCCUPIED, bytes([2, 0x01]))]
 
 
 def test_heartbeat_does_not_note_motion():
@@ -1102,13 +1148,40 @@ def test_xy_colour_set_and_query():
     assert (resp[4] << 8) | resp[5] == 20000
 
 
-def test_startup_dali_ready_false_no_answer():
+def test_startup_no_answer_dali_always_ready():
     disp, world, _ = _disp()
     world.startup_complete = False
     assert disp.handle(parse_request(_basic(CMD["QUERY_CONTROLLER_STARTUP_COMPLETE"])))[0] == ResponseType.NO_ANSWER
+    world.dali_ready = False  # ignored
+    assert disp.handle(parse_request(_basic(CMD["QUERY_IS_DALI_READY"])))[0] == ResponseType.OK
+
+
+def test_startup_delay_two_seconds_incomplete_then_complete(monkeypatch):
+    """-s 2: QUERY_CONTROLLER_STARTUP_COMPLETE is incomplete until 2s after start."""
+    import time as time_mod
+
+    disp, world, _ = _disp()
     world.startup_complete = True
-    world.dali_ready = False
-    assert disp.handle(parse_request(_basic(CMD["QUERY_IS_DALI_READY"])))[0] == ResponseType.NO_ANSWER
+    world.startup_delay_s = 2.0
+    world.started_at = 2_000_000_000.0
+    req = parse_request(_basic(CMD["QUERY_CONTROLLER_STARTUP_COMPLETE"]))
+    assert not isinstance(req, ParseFailure)
+
+    monkeypatch.setattr(time_mod, "time", lambda: world.started_at + 1.9)
+    assert world.is_startup_complete() is False
+    assert disp.handle(req)[0] == ResponseType.NO_ANSWER
+
+    monkeypatch.setattr(time_mod, "time", lambda: world.started_at + 2.0)
+    assert world.is_startup_complete() is True
+    assert disp.handle(req)[0] == ResponseType.OK
+
+
+def test_cli_startup_delay_flag():
+    from zencontrol_simulator.__main__ import build_parser
+
+    args = build_parser().parse_args(["-s", "2"])
+    assert args.startup_delay == 2.0
+    assert build_parser().parse_args([]).startup_delay == 0
 
 
 def test_inject_level_scene_colour_profile(monkeypatch):

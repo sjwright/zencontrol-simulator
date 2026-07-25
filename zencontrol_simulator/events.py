@@ -180,6 +180,13 @@ class EventEmitter:
         return self.emit(64 + ecd, EventCode.BUTTON_HOLD, bytes([instance & 0xFF]), instance=instance)
 
     def occupancy(self, ecd: int, instance: int, occupied: bool = True) -> bool:
+        """Emit OCCUPANCY_EVENT (IS_OCCUPIED) for an instance.
+
+        PDF: instance sensors only report motion detected — there is no instance
+        “not detected” event; payload byte 2 is unused (docs example ``0x01``).
+        ``occupied=False`` still emits that motion-shaped frame but skips
+        ``note_motion`` (raw/keepalive-style inject without advancing timers).
+        """
         self._require_instance(ecd, instance, expect_occupancy=True)
         inst = self.world.instance(ecd, instance)
         # zencontrol-python treats any IS_OCCUPIED as motion and starts the hold timer;
@@ -189,7 +196,8 @@ class EventEmitter:
         return self.emit(
             64 + ecd,
             EventCode.IS_OCCUPIED,
-            bytes([instance & 0xFF, 0x01 if occupied else 0x00]),
+            # PDF OCCUPANCY_EVENT: instance number + unused data (example 0x01).
+            bytes([instance & 0xFF, 0x01]),
             instance=instance,
         )
 

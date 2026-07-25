@@ -27,6 +27,7 @@ class ResponseType(IntEnum):
 
 class ErrorCode(IntEnum):
     CHECKSUM = 0x01
+    SHORT_CIRCUIT = 0x02  # DALI line fault / not ready (PDF Error Codes)
     UNKNOWN_CMD = 0x04
     INVALID_ARGS = 0xB1
     UNKNOWN_TARGET = 0xB8

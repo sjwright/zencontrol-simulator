@@ -429,6 +429,8 @@ devices:
       - number: 0
         type: push_button
         label: "On/Off"
+        # primary=Living Areas, first=Kitchen, second unset (QUERY_INSTANCE_GROUPS)
+        groups: [0, 1, 255]
       - number: 1
         type: push_button
         label: "Scene Bright"
@@ -440,6 +442,7 @@ devices:
           hold: 60
           report: 20
           last_detect: 12
+        groups: [0, 255, 255]
 
   - address: 1
     label: "Kitchen Switch"
@@ -672,13 +675,18 @@ devices:
 profiles:
   current: 1
   last_scheduled: 1
+  last_overridden_utc: 0x22334455
+  last_scheduled_utc: 0x44556677
   items:
     - number: 1
       label: "Day"
+      behaviour: 0  # enabled, scheduled priority
     - number: 2
       label: "Night"
+      behaviour: 2  # enabled, medium priority (bits 1–2 = 1)
     - number: 3
       label: "Away"
+      behaviour: 1  # disabled flag
 
 system_variables:
   - id: 0

@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import logging
 import sys
+import time
 from pathlib import Path
 
 from .server import Simulator
@@ -49,6 +50,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Read stdin commands to inject button/occupancy/level/scene/colour events",
     )
     parser.add_argument(
+        "-s",
+        "--startup-delay",
+        type=float,
+        metavar="N",
+        default=0,
+        help=(
+            "Seconds before QUERY_CONTROLLER_STARTUP_COMPLETE reports complete "
+            "(incomplete / NO_ANSWER until N seconds after process start)"
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -79,6 +91,10 @@ def main(argv: list[str] | None = None) -> None:
         world.bind_host = args.host
     if args.port:
         world.bind_port = args.port
+    if args.startup_delay and args.startup_delay > 0:
+        world.startup_delay_s = float(args.startup_delay)
+        world.startup_complete = True  # eventual state after the delay
+        world.started_at = time.time()
 
     simulator = Simulator(world)
     try:

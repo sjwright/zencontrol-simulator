@@ -1,6 +1,8 @@
 """Live protocol-layer tests: zencontrol-python ZenProtocol ↔ simulator."""
 
 import asyncio
+import time
+from pathlib import Path
 
 import pytest
 
@@ -12,6 +14,8 @@ from zencontrol import (  # noqa: E402
     ZenEventMask,
     ZenEventMode,
 )
+
+CONFIG = Path(__file__).resolve().parents[1] / "config.yaml"
 
 
 async def _wait(seconds: float = 0.15) -> None:
@@ -32,6 +36,48 @@ async def test_controller_version_and_label(live_protocol):
     assert await p.query_controller_label(c) == "Simulator"
     assert await p.query_controller_startup_complete(c) is True
     assert await p.query_is_dali_ready(c) is True
+
+
+@pytest.mark.asyncio
+async def test_startup_delay_two_seconds_live():
+    """Live: -s 2 equivalent — incomplete until 2s after sim start, then OK."""
+    from zencontrol import ZenProtocol
+    from zencontrol.api.models import ZenController
+    from zencontrol_simulator.server import Simulator
+    from zencontrol_simulator.world import load_world
+
+    world = load_world(CONFIG)
+    world.bind_host = "127.0.0.1"
+    world.bind_port = 0
+    world.heartbeat_interval = 0
+    world.startup_complete = True
+    world.startup_delay_s = 2.0
+    # Leave started_at unset so Simulator.start() anchors the clock.
+
+    sim = Simulator(world)
+    await sim.start()
+    assert sim._transport is not None
+    port = sim._transport.get_extra_info("sockname")[1]
+    mac = ":".join(f"{b:02x}" for b in world.mac)
+
+    protocol = ZenProtocol(unicast=True, listen_ip="127.0.0.1", listen_port=0)
+    controller = ZenController(
+        id="1",
+        name="sim",
+        label="Sim",
+        host="127.0.0.1",
+        port=port,
+        mac=mac,
+        protocol=protocol,
+    )
+    protocol.set_controllers([controller])
+    try:
+        assert await protocol.query_controller_startup_complete(controller) is not True
+        await _wait(2.1)
+        assert await protocol.query_controller_startup_complete(controller) is True
+    finally:
+        await protocol.aclose()
+        await sim.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +302,41 @@ async def test_colour_tc_set_and_query(live_protocol):
 
 
 @pytest.mark.asyncio
+async def test_colour_only_preserves_level_and_skips_level_event(live_protocol):
+    """DALI_COLOUR with arc 0xFF changes colour only — no LEVEL_CHANGE_V2."""
+    p = live_protocol.protocol
+    addr = live_protocol.ecg(0)
+    levels: list[int] = []
+    colours: list = []
+
+    async def on_level(*, address, arc_level, payload):
+        if address.number == 0:
+            levels.append(arc_level)
+
+    async def on_colour(*, address, colour, payload):
+        if address.number == 0:
+            colours.append(colour)
+
+    p.set_callbacks(level_change_callback=on_level, colour_change_callback=on_colour)
+    await p.start_event_monitoring()
+    await _wait(0.25)
+
+    assert await p.dali_arc_level(addr, 77) is True
+    await _wait(0.3)
+    levels.clear()
+    colours.clear()
+
+    colour = ZenColour(type=ZenColourType.TC, kelvin=4200)
+    assert await p.dali_colour(addr, colour, level=255) is True
+    await _wait(0.35)
+
+    assert await p.dali_query_level(addr) == 77
+    assert live_protocol.world.lights[0].level == 77
+    assert any(c is not None and c.kelvin == 4200 for c in colours)
+    assert levels == []
+
+
+@pytest.mark.asyncio
 async def test_colour_rgb_set_and_query(live_protocol):
     p = live_protocol.protocol
     addr = live_protocol.ecg(2)
@@ -326,6 +407,47 @@ async def test_occupancy_timers(live_protocol):
 
 
 @pytest.mark.asyncio
+async def test_occupy_updates_last_detect_query(live_protocol):
+    p = live_protocol.protocol
+    inst = live_protocol.instance(0, 2, type_code=3)
+    world_inst = live_protocol.world.instance(0, 2)
+    assert world_inst is not None and world_inst.timers is not None
+    world_inst.timers.last_motion_at = time.time() - 99
+
+    assert live_protocol.sim.inject_occupancy(0, 2, occupied=True) is True
+    timers = await p.query_occupancy_instance_timers(inst)
+    assert timers is not None
+    assert timers["last_detect"] <= 1
+
+
+@pytest.mark.asyncio
+async def test_occupy_without_note_motion_and_heartbeat_via_protocol(live_protocol):
+    """PDF: instance OCCUPANCY is motion-only; unused payload byte is 0x01."""
+    p = live_protocol.protocol
+    occupied: list[tuple[int, int, bytes]] = []
+
+    async def on_occ(*, instance, payload):
+        occupied.append((instance.address.number, instance.number, bytes(payload)))
+
+    p.set_callbacks(is_occupied_callback=on_occ)
+    await p.start_event_monitoring()
+    await _wait(0.25)
+
+    world_inst = live_protocol.world.instance(0, 2)
+    assert world_inst is not None and world_inst.timers is not None
+    world_inst.timers.last_motion_at = time.time() - 99
+
+    # occupied=False: still motion-shaped frame, does not advance last_detect.
+    assert live_protocol.sim.inject_occupancy(0, 2, occupied=False) is True
+    assert world_inst.timers.seconds_since_detect() >= 90
+    assert live_protocol.sim.events.occupancy_heartbeat() is True
+    await _wait(0.4)
+
+    assert len(occupied) >= 2
+    assert all(pl == bytes([2, 0x01]) for ecd, n, pl in occupied if ecd == 0 and n == 2)
+
+
+@pytest.mark.asyncio
 async def test_inhibit(live_protocol):
     p = live_protocol.protocol
     addr = live_protocol.ecg(1)
@@ -384,6 +506,20 @@ async def test_tpi_event_mode_and_unicast_roundtrip(live_protocol):
 
 
 @pytest.mark.asyncio
+async def test_clear_tpi_event_unicast_address(live_protocol):
+    """Sim extension: omit IP/port (zeros) clears unicast targeting."""
+    p, c = live_protocol.protocol, live_protocol.controller
+    await p.set_tpi_event_unicast_address(c, ipaddr="127.0.0.1", port=6970)
+    await p.set_tpi_event_unicast_address(c)
+    info = await p.query_tpi_event_unicast_address(c)
+    assert info is not None
+    assert info["port"] == 0
+    assert info["ip"] == "0.0.0.0"
+    assert live_protocol.world.unicast_ip is None
+    assert live_protocol.world.unicast_port == 0
+
+
+@pytest.mark.asyncio
 async def test_event_filter_roundtrip(live_protocol):
     p = live_protocol.protocol
     addr = live_protocol.ecg(0)
@@ -392,6 +528,94 @@ async def test_event_filter_roundtrip(live_protocol):
     filters = await p.query_dali_tpi_event_filters(addr)
     assert filters  # at least one entry
     assert await p.dali_clear_tpi_event_filter(addr, mask) is True
+
+
+@pytest.mark.asyncio
+async def test_multicast_event_receipt():
+    """ZenProtocol multicast client receives simulator events on 239.255.90.67:6969."""
+    from zencontrol import ZenProtocol
+    from zencontrol.api.models import ZenController
+    from zencontrol_simulator.server import Simulator
+    from zencontrol_simulator.world import load_world
+
+    world = load_world(CONFIG)
+    world.bind_host = "127.0.0.1"
+    world.bind_port = 0
+    world.heartbeat_interval = 0
+    world.event_mode = 0x01  # enabled + multicast (unicast bit clear)
+    sim = Simulator(world)
+    await sim.start()
+    assert sim._transport is not None
+    port = sim._transport.get_extra_info("sockname")[1]
+    mac = ":".join(f"{b:02x}" for b in world.mac)
+
+    protocol = ZenProtocol(unicast=False)
+    controller = ZenController(
+        id="1",
+        name="sim",
+        label="Sim",
+        host="127.0.0.1",
+        port=port,
+        mac=mac,
+        protocol=protocol,
+    )
+    protocol.set_controllers([controller])
+    buttons: list[tuple[int, int]] = []
+
+    async def on_button(*, instance, payload):
+        buttons.append((instance.address.number, instance.number))
+
+    protocol.set_callbacks(button_press_callback=on_button)
+    try:
+        await protocol.start_event_monitoring()
+        await _wait(0.3)
+        assert sim.inject_button_press(0, 0) is True
+        await _wait(0.4)
+        assert (0, 0) in buttons
+    finally:
+        await protocol.aclose()
+        await sim.stop()
+
+
+@pytest.mark.asyncio
+async def test_level_and_button_event_filters_mute_emit(live_protocol):
+    """Filtering + TPI filters mute LEVEL_CHANGE_V2 and BUTTON_PRESS at the client."""
+    p, c = live_protocol.protocol, live_protocol.controller
+    levels: list[int] = []
+    buttons: list[tuple[int, int]] = []
+
+    async def on_level(*, address, arc_level, payload):
+        levels.append(address.number)
+
+    async def on_button(*, instance, payload):
+        buttons.append((instance.address.number, instance.number))
+
+    p.set_callbacks(level_change_callback=on_level, button_press_callback=on_button)
+    await p.start_event_monitoring()
+    await _wait(0.25)
+
+    assert await p.tpi_event_emit(
+        c,
+        ZenEventMode(enabled=True, filtering=True, unicast=True, multicast=False),
+    ) is True
+    assert await p.dali_add_tpi_event_filter(
+        live_protocol.ecg(1), ZenEventMask(level_change_v2=True)
+    ) is True
+    assert await p.dali_add_tpi_event_filter(
+        live_protocol.instance(0, 0, type_code=1), ZenEventMask(button_press=True)
+    ) is True
+
+    assert await p.dali_arc_level(live_protocol.ecg(1), 40) is True
+    assert live_protocol.world.lights[1].level == 40
+    assert live_protocol.sim.inject_button_press(0, 0) is False
+    await _wait(0.35)
+    assert 1 not in levels
+    assert buttons == []
+
+    # Unfiltered ECG still delivers LEVEL_CHANGE_V2.
+    assert await p.dali_arc_level(live_protocol.ecg(2), 33) is True
+    await _wait(0.35)
+    assert 2 in levels
 
 
 # ---------------------------------------------------------------------------
@@ -624,14 +848,12 @@ async def test_group_last_scene_and_status(live_protocol):
 
 
 @pytest.mark.asyncio
-async def test_readiness_no_answer_when_not_ready(live_protocol):
+async def test_startup_incomplete_and_dali_always_ready(live_protocol):
     p, c = live_protocol.protocol, live_protocol.controller
     live_protocol.world.startup_complete = False
     assert await p.query_controller_startup_complete(c) is not True
     live_protocol.world.startup_complete = True
-    live_protocol.world.dali_ready = False
-    assert await p.query_is_dali_ready(c) is not True
-    live_protocol.world.dali_ready = True
+    live_protocol.world.dali_ready = False  # ignored — simulator has no bus fault
     assert await p.query_is_dali_ready(c) is True
 
 
@@ -728,6 +950,37 @@ async def test_fade_auto_complete_live(live_protocol):
     assert status is not None
     assert status["fade_running"] is False
     assert await p.dali_query_level(addr) == 50
+
+
+@pytest.mark.asyncio
+async def test_custom_fade_receives_intermediate_and_final_events(live_protocol):
+    """3s dali_custom_fade: client gets mid-fade LEVEL_CHANGE_V2 ticks and completion."""
+    p = live_protocol.protocol
+    addr = live_protocol.ecg(1)
+    # (ecg, current, destination) from LEVEL_CHANGE_V2 payload
+    events: list[tuple[int, int, int]] = []
+
+    async def on_level(*, address, arc_level, payload):
+        if len(payload) >= 2:
+            events.append((address.number, payload[0], payload[1]))
+
+    p.set_callbacks(level_change_callback=on_level)
+    await p.start_event_monitoring()
+    await _wait(0.25)
+
+    await p.dali_arc_level(addr, 0)
+    await _wait(0.3)
+    events.clear()
+
+    assert await p.dali_custom_fade(addr, 100, 3) is True
+    # Fade progress loop ticks ~every 0.5s; wait past completion with slack.
+    await _wait(3.8)
+
+    mine = [(cur, dest) for n, cur, dest in events if n == 1]
+    assert len(mine) >= 3
+    assert any(0 < cur < 100 and dest == 100 for cur, dest in mine)
+    assert any(cur == dest == 100 for cur, dest in mine)
+    assert await p.dali_query_level(addr) == 100
 
 
 @pytest.mark.asyncio

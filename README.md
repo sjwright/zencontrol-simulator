@@ -22,6 +22,7 @@ source .venv/bin/activate
 zencontrol-simulator                 # uses ./config.yaml
 zencontrol-simulator -v              # debug logging
 zencontrol-simulator -i              # interactive event injection
+zencontrol-simulator -s 2            # simulate startup delay in seconds
 
 # Snapshot a live controller into a simulator YAML
 zencontrol-dump -ip 1.2.3.4
@@ -48,7 +49,7 @@ While the simulator is running:
 button 0 0          # ECD 0, instance 0 press
 hold 0 1            # button hold
 occupy 0 2          # occupancy / motion pulse (resets last_detect clock)
-occupy 0 2 0        # emit unoccupied payload (library still treats as motion)
+occupy 0 2 0        # same motion-shaped event without advancing last_detect
 absolute 13 0 4660  # absolute input ECD 13, instance 0, value 0x1234
 level 1 128         # ECG/group/broadcast level + events
 scene 64 1          # scene recall + events
@@ -59,10 +60,10 @@ stats
 quit
 ```
 
-Note: `zencontrol-python` treats any `IS_OCCUPIED` event as motion and clears
-occupied via the hold timer, so the `occupied=0` inject is mainly for raw
-packet testing. Occupancy timer queries return **seconds since last motion**
-(wall-clock), matching hardware.
+Note: PDF instance `OCCUPANCY_EVENT` is motion-only (no “not detected”); payload
+byte 2 is unused (`0x01`). `zencontrol-python` treats any `IS_OCCUPIED` as motion
+and clears occupied via the hold timer. Occupancy timer queries return **seconds
+since last motion** (wall-clock), matching hardware.
 
 ## Sample world
 
@@ -147,7 +148,7 @@ Status legend: **Simulated** = responds with some degree of correctness / simula
 | `0x0C` | QUERY_OCCUPANCY_INSTANCE_TIMERS        | Simulated  | deadtime/hold/report + wall-clock last_detect             |
 | `0x0D` | QUERY_INSTANCES_BY_ADDRESS             | Partial    | Type/status; state always `0x00`; YAML instance types     |
 | `0x0E` | DALI_COLOUR                            | Simulated  | Colour frame; XY/Tc/RGBWAF; optional arc; group/broadcast |
-| `0x12` | QUERY_GROUP_BY_NUMBER                  | Partial    | Occupancy always `0x01`; level = max member visible       |
+| `0x12` | QUERY_GROUP_BY_NUMBER                  | Partial    | Occupancy stub `0x01`; level = max member; empty → `NO_ANSWER` |
 | `0x14` | QUERY_SCENE_NUMBERS_BY_ADDRESS         | Simulated  | Scene indices with configured levels; none → `NO_ANSWER`  |
 | `0x15` | QUERY_GROUP_MEMBERSHIP_BY_ADDRESS      | Simulated  | Membership bitmap                                         |
 | `0x16` | QUERY_DALI_ADDRESSES_WITH_INSTANCES    | Simulated  | ECD wires; paged from start                               |
@@ -156,13 +157,13 @@ Status legend: **Simulated** = responds with some degree of correctness / simula
 | `0x1C` | QUERY_CONTROLLER_VERSION_NUMBER        | Simulated  | From YAML `version`                                       |
 | `0x1D` | QUERY_CONTROL_GEAR_DALI_ADDRESSES      | Simulated  | ECG presence bitmap                                       |
 | `0x1E` | QUERY_SCENE_LEVELS_BY_ADDRESS          | Simulated  | 16 bytes; slots 0–11 live, 12–15 `0xFF`                   |
-| `0x21` | QUERY_INSTANCE_GROUPS                  | No         |                                                           |
+| `0x21` | QUERY_INSTANCE_GROUPS                  | Simulated  | YAML `instances[].groups` → primary/first/second (0xFF=none) |
 | `0x22` | QUERY_DALI_FITTING_NUMBER              | Simulated  | `{fitting}.{addr}`; ECD uses `addr+100` (e.g. `1.104`)    |
 | `0x23` | QUERY_DALI_INSTANCE_FITTING_NUMBER     | Simulated  | `{fitting}.{ecd+100}.{instance}` (e.g. `1.104.2`)         |
 | `0x24` | QUERY_CONTROLLER_LABEL                 | Simulated  | Default config → `"Simulator"`                            |
 | `0x25` | QUERY_CONTROLLER_FITTING_NUMBER        | Simulated  | From YAML `controller.fitting_number` (default `"1"`)     |
-| `0x26` | QUERY_IS_DALI_READY                    | Stub       | no bus simulation; reads value from YAML flag             |
-| `0x27` | QUERY_CONTROLLER_STARTUP_COMPLETE      | Stub       | no boot sequence; reads value from YAML flag              |
+| `0x26` | QUERY_IS_DALI_READY                    | Stub       | Always `OK` (no DALI bus fault model)                     |
+| `0x27` | QUERY_CONTROLLER_STARTUP_COMPLETE      | Simulated  | YAML flag; `-s N` delays complete for N seconds           |
 | `0x28` | QUERY_OPERATING_MODE_BY_ADDRESS        | Stub       | Always mode `0`; unknown → `0xB8`                         |
 | `0x29` | OVERRIDE_DALI_BUTTON_LED_STATE         | Stub       | Always `OK`; no LED model                                 |
 | `0x30` | QUERY_LAST_KNOWN_DALI_BUTTON_LED_STATE | Stub       | Always `ANSWER` `[0x01]` (LED off)                        |
@@ -177,7 +178,7 @@ Status legend: **Simulated** = responds with some degree of correctness / simula
 | `0x40` | SET_TPI_EVENT_UNICAST_ADDRESS          | Simulated  | Dynamic frame; `0.0.0.0`/port 0 clears                    |
 | `0x41` | QUERY_TPI_EVENT_UNICAST_ADDRESS        | Simulated  | mode + port + IPv4                                        |
 | `0x42` | QUERY_SYSTEM_VARIABLE_NAME             | Simulated  | Empty → `NO_ANSWER`                                       |
-| `0x43` | QUERY_PROFILE_INFORMATION              | No         |                                                           |
+| `0x43` | QUERY_PROFILE_INFORMATION              | Simulated  | Header + per-profile behaviour; supersedes `0x0B`         |
 | `0x44` | QUERY_COLOUR_SCENE_MEMBERSHIP_BY_ADDR  | Simulated  | Scene indices with colour data                            |
 | `0x45` | QUERY_COLOUR_SCENE_0_7_DATA_FOR_ADDR   | Simulated  | 8×7-byte blobs; unused = `0xFF`×7                         |
 | `0x46` | QUERY_COLOUR_SCENE_8_11_DATA_FOR_ADDR  | Simulated  | 4×7-byte blobs                                            |
