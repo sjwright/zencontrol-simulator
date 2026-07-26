@@ -42,7 +42,7 @@ async def _wait(seconds: float = 0.15) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Protocol layer (ZenProtocol + simulator)
+# Protocol layer (zencontrol.testing.ZenTestClient + simulator)
 # ---------------------------------------------------------------------------
 
 
@@ -230,7 +230,7 @@ async def test_get_absolute_inputs_interview_and_events(live_zen_absolute):
     assert "Slider" in blob
     assert "Demo Absolute Input" in blob
 
-    zen.absolute_input_change = on_change
+    zen.callbacks.absolute_input_change = on_change
     await zen.start()
     await _wait(0.25)
 
@@ -271,7 +271,7 @@ async def test_absolute_input_event_before_discovery_creates_singleton(live_zen_
     async def on_change(absolute_input: ZenAbsoluteInput, value: int) -> None:
         changes.append((absolute_input, value))
 
-    zen.absolute_input_change = on_change
+    zen.callbacks.absolute_input_change = on_change
     await zen.start()
     await _wait(0.25)
 

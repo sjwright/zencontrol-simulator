@@ -1,4 +1,4 @@
-"""Live protocol-layer tests: zencontrol-python ZenProtocol ↔ simulator."""
+"""Live protocol-layer tests: zencontrol-python ↔ simulator."""
 
 import asyncio
 import time
@@ -43,7 +43,8 @@ async def test_controller_version_and_label(live_protocol):
 @pytest.mark.asyncio
 async def test_startup_delay_two_seconds_live():
     """Live: -s 2 equivalent — incomplete until 2s after sim start, then OK."""
-    from zencontrol import ZenController, ZenProtocol
+    from zencontrol import ZenController
+    from zencontrol.testing import ZenTestClient
     from zencontrol_simulator.server import Simulator
     from zencontrol_simulator.world import load_world
 
@@ -61,7 +62,7 @@ async def test_startup_delay_two_seconds_live():
     port = sim._transport.get_extra_info("sockname")[1]
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
-    protocol = ZenProtocol(unicast=True, listen_ip="127.0.0.1", listen_port=0)
+    protocol = ZenTestClient(unicast=True, listen_ip="127.0.0.1", listen_port=0)
     controller = ZenController(
         id=1,
         name="sim",
@@ -69,7 +70,7 @@ async def test_startup_delay_two_seconds_live():
         host="127.0.0.1",
         port=port,
         mac=mac,
-        protocol=protocol,
+        ctx=protocol.context,
     )
     protocol.set_controllers([controller])
     try:
@@ -464,7 +465,6 @@ async def test_custom_fade_and_stop(live_protocol):
     addr = live_protocol.ecg(1)
     await p.dali_arc_level(addr, 0)
     assert await p.dali_custom_fade(addr, 100, 5) is True
-    p.cache.clear()  # status queries are cacheable
     status = await p.dali_query_control_gear_status(addr)
     assert status is not None
     assert status["fade_running"] is True
@@ -473,7 +473,6 @@ async def test_custom_fade_and_stop(live_protocol):
     assert 0 <= level <= 100
     assert await p.dali_stop_fade(addr) is True
     assert not (live_protocol.world.lights[1].status & 0x10)
-    p.cache.clear()
     status2 = await p.dali_query_control_gear_status(addr)
     assert status2 is not None
     assert status2["fade_running"] is False
@@ -533,8 +532,9 @@ async def test_event_filter_roundtrip(live_protocol):
 
 @pytest.mark.asyncio
 async def test_multicast_event_receipt():
-    """ZenProtocol multicast client receives simulator events on 239.255.90.67:6969."""
-    from zencontrol import ZenController, ZenProtocol
+    """Multicast client receives simulator events on 239.255.90.67:6969."""
+    from zencontrol import ZenController
+    from zencontrol.testing import ZenTestClient
     from zencontrol_simulator.server import Simulator
     from zencontrol_simulator.world import load_world
 
@@ -549,7 +549,7 @@ async def test_multicast_event_receipt():
     port = sim._transport.get_extra_info("sockname")[1]
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
-    protocol = ZenProtocol(unicast=False)
+    protocol = ZenTestClient(unicast=False)
     controller = ZenController(
         id=1,
         name="sim",
@@ -557,7 +557,7 @@ async def test_multicast_event_receipt():
         host="127.0.0.1",
         port=port,
         mac=mac,
-        protocol=protocol,
+        ctx=protocol.context,
     )
     protocol.set_controllers([controller])
     buttons: list[tuple[int, int]] = []
@@ -841,7 +841,6 @@ async def test_group_last_scene_and_status(live_protocol):
 
     await p.dali_arc_level(live_protocol.ecg(1), 0)
     assert await p.dali_custom_fade(live_protocol.ecg(1), 80, 5) is True
-    p.cache.clear()
     status = await p.dali_query_control_gear_status(g0)
     assert status is not None
     assert status["fade_running"] is True
@@ -945,7 +944,6 @@ async def test_fade_auto_complete_live(live_protocol):
     await p.dali_arc_level(addr, 0)
     assert await p.dali_custom_fade(addr, 50, 1) is True
     await _wait(1.2)
-    p.cache.clear()
     status = await p.dali_query_control_gear_status(addr)
     assert status is not None
     assert status["fade_running"] is False

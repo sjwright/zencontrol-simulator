@@ -108,18 +108,18 @@ async def test_zencontrol_python_discovery_and_control():
                 if colour is not None:
                     colour_events.append((light.address.number, colour))
 
-            zen.button_press = on_button
-            zen.motion_event = on_motion
-            zen.absolute_input_change = on_absolute
-            zen.profile_change = on_profile
-            zen.system_variable_change = on_sysvar
-            zen.light_change = on_light
+            zen.callbacks.button_press = on_button
+            zen.callbacks.motion_event = on_motion
+            zen.callbacks.absolute_input_change = on_absolute
+            zen.callbacks.profile_change = on_profile
+            zen.callbacks.system_variable_change = on_sysvar
+            zen.callbacks.light_change = on_light
 
             # Arc level mutates + query matches
             light = by_addr[1]
             assert await light.set(level=50, fade=True) is LEGACY_ACK
             await asyncio.sleep(0.15)
-            assert await zen.protocol.dali_query_level(light.address) == 50
+            assert await zen.commands.dali_query_level(light.address) == 50
             assert world.lights[1].level == 50
 
             # Tunable colour on ECG 0
@@ -151,7 +151,7 @@ async def test_zencontrol_python_discovery_and_control():
             await svar.set_value(42)
             await asyncio.sleep(0.2)
             assert world.system_variables[0].value == 42
-            assert await zen.protocol.query_system_variable(ctrl, 0) == 42
+            assert await zen.commands.query_system_variable(ctrl, 0) == 42
             assert any(vid == 0 and val == 42 for vid, val in sysvar_events)
 
             # Injected events reach library callbacks

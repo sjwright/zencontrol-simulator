@@ -21,7 +21,7 @@ LEGACY_ACK = False
 
 @dataclass(slots=True)
 class LiveProtocol:
-    """Running simulator paired with a zencontrol-python ZenProtocol client."""
+    """Running simulator paired with zencontrol-python testing.ZenTestClient facade."""
 
     world: World
     sim: Simulator
@@ -72,9 +72,10 @@ class LiveProtocol:
 
 @pytest.fixture
 async def live_protocol():
-    """Start simulator on an ephemeral port and a ZenProtocol unicast client."""
+    """Start simulator on an ephemeral port with a ZenTestClient facade."""
     pytest.importorskip("zencontrol")
-    from zencontrol import ZenController, ZenProtocol
+    from zencontrol import ZenController
+    from zencontrol.testing import ZenTestClient
 
     world = load_world(CONFIG)
     world.bind_host = "127.0.0.1"
@@ -87,7 +88,7 @@ async def live_protocol():
     port = sim._transport.get_extra_info("sockname")[1]
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
-    protocol = ZenProtocol(unicast=True, listen_ip="127.0.0.1", listen_port=0)
+    protocol = ZenTestClient(unicast=True, listen_ip="127.0.0.1", listen_port=0)
     controller = ZenController(
         id=1,
         name="sim",
@@ -95,7 +96,7 @@ async def live_protocol():
         host="127.0.0.1",
         port=port,
         mac=mac,
-        protocol=protocol,
+        ctx=protocol.context,
     )
     protocol.set_controllers([controller])
 
