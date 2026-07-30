@@ -44,7 +44,6 @@ async def test_controller_version_and_label(live_protocol):
 @pytest.mark.asyncio
 async def test_startup_delay_two_seconds_live():
     """Live: -s 2 equivalent — incomplete until 2s after sim start, then OK."""
-    from zencontrol import ZenController
     from zencontrol.testing import ZenTestClient
     from zencontrol_simulator.server import Simulator
     from zencontrol_simulator.world import load_world
@@ -64,14 +63,13 @@ async def test_startup_delay_two_seconds_live():
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
     protocol = ZenTestClient(unicast=True, listen_ip="127.0.0.1", listen_port=0)
-    controller = ZenController(
+    controller = protocol.context.controller(
         id=1,
         name="sim",
         label="Sim",
         host="127.0.0.1",
         port=port,
         mac=mac,
-        ctx=protocol.context,
     )
     protocol.set_controllers([controller])
     try:
@@ -534,7 +532,6 @@ async def test_event_filter_roundtrip(live_protocol):
 @pytest.mark.asyncio
 async def test_multicast_event_receipt():
     """Multicast client receives simulator events on 239.255.90.67:6969."""
-    from zencontrol import ZenController
     from zencontrol.testing import ZenTestClient
     from zencontrol_simulator.server import Simulator
     from zencontrol_simulator.world import load_world
@@ -551,14 +548,13 @@ async def test_multicast_event_receipt():
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
     protocol = ZenTestClient(unicast=False)
-    controller = ZenController(
+    controller = protocol.context.controller(
         id=1,
         name="sim",
         label="Sim",
         host="127.0.0.1",
         port=port,
         mac=mac,
-        ctx=protocol.context,
     )
     protocol.set_controllers([controller])
     buttons: list[tuple[int, int]] = []

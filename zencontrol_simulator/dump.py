@@ -443,12 +443,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 async def _dump(args: argparse.Namespace) -> None:
-    from zencontrol import ZenController
     from zencontrol.testing import ZenTestClient
 
     async with ZenTestClient(print_traffic=False) as tpi:
-        ctrl = ZenController(
-            ctx=tpi.context,
+        ctrl = tpi.context.controller(
             id=1,
             name="dump",
             label="",

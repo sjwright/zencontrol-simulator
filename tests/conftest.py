@@ -74,7 +74,6 @@ class LiveProtocol:
 async def live_protocol():
     """Start simulator on an ephemeral port with a ZenTestClient facade."""
     pytest.importorskip("zencontrol")
-    from zencontrol import ZenController
     from zencontrol.testing import ZenTestClient
 
     world = load_world(CONFIG)
@@ -89,14 +88,13 @@ async def live_protocol():
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
     protocol = ZenTestClient(unicast=True, listen_ip="127.0.0.1", listen_port=0)
-    controller = ZenController(
+    controller = protocol.context.controller(
         id=1,
         name="sim",
         label="Sim",
         host="127.0.0.1",
         port=port,
         mac=mac,
-        ctx=protocol.context,
     )
     protocol.set_controllers([controller])
 
