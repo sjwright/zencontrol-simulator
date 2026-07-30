@@ -524,7 +524,7 @@ async def test_clear_tpi_event_unicast_address(live_protocol):
 async def test_event_filter_roundtrip(live_protocol):
     p = live_protocol.protocol
     addr = live_protocol.ecg(0)
-    mask = ZenEventMask(level_change_v2=True)
+    mask = ZenEventMask.LEVEL_CHANGE_V2
     assert await p.dali_add_tpi_event_filter(addr, mask) is True
     filters = await p.query_dali_tpi_event_filters(addr)
     assert filters  # at least one entry
@@ -600,10 +600,10 @@ async def test_level_and_button_event_filters_mute_emit(live_protocol):
         ZenEventMode(enabled=True, filtering=True, unicast=True, multicast=False),
     ) is True
     assert await p.dali_add_tpi_event_filter(
-        live_protocol.ecg(1), ZenEventMask(level_change_v2=True)
+        live_protocol.ecg(1), ZenEventMask.LEVEL_CHANGE_V2
     ) is True
     assert await p.dali_add_tpi_event_filter(
-        live_protocol.instance(0, 0, type_code=1), ZenEventMask(button_press=True)
+        live_protocol.instance(0, 0, type_code=1), ZenEventMask.BUTTON_PRESS
     ) is True
 
     assert await p.dali_arc_level(live_protocol.ecg(1), 40) is LEGACY_ACK

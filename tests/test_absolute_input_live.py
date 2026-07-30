@@ -149,7 +149,7 @@ async def test_absolute_input_event_filter_mutes_emit(live_protocol):
         ZenEventMode(enabled=True, filtering=True, unicast=True, multicast=False),
     ) is True
 
-    mask = ZenEventMask(absolute_input=True)
+    mask = ZenEventMask.ABSOLUTE_INPUT
     assert await p.dali_add_tpi_event_filter(
         live_protocol.instance(13, 0, type_code=0x02), mask
     ) is True
