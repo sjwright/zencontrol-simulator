@@ -210,8 +210,8 @@ async def test_get_absolute_inputs_interview_and_events(live_zen_absolute):
 
     changes: list[tuple[ZenAbsoluteInput, int]] = []
 
-    async def on_change(absolute_input: ZenAbsoluteInput, value: int) -> None:
-        changes.append((absolute_input, value))
+    async def on_change(*, absolute_input: ZenAbsoluteInput) -> None:
+        changes.append((absolute_input, absolute_input.value))
 
     found = await zen.get_absolute_inputs(controller=ctrl)
     assert len(found) >= 1
@@ -268,8 +268,8 @@ async def test_absolute_input_event_before_discovery_creates_singleton(live_zen_
 
     changes: list[tuple[ZenAbsoluteInput, int]] = []
 
-    async def on_change(absolute_input: ZenAbsoluteInput, value: int) -> None:
-        changes.append((absolute_input, value))
+    async def on_change(*, absolute_input: ZenAbsoluteInput) -> None:
+        changes.append((absolute_input, absolute_input.value))
 
     zen.callbacks.absolute_input_change = on_change
     await zen.start()

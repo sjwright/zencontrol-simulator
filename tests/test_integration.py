@@ -92,21 +92,21 @@ async def test_zencontrol_python_discovery_and_control():
             async def on_button(button):
                 button_events.append(button)
 
-            async def on_motion(sensor, occupied):
-                motion_events.append((sensor, occupied))
+            async def on_motion(*, sensor):
+                motion_events.append((sensor, sensor.occupied))
 
-            async def on_absolute(absolute_input, value):
-                absolute_events.append((absolute_input, value))
+            async def on_absolute(*, absolute_input):
+                absolute_events.append((absolute_input, absolute_input.value))
 
             async def on_profile(profile):
                 profile_events.append(profile)
 
-            async def on_sysvar(system_variable, value, changed, by_me):
-                sysvar_events.append((system_variable.id, value))
+            async def on_sysvar(*, system_variable, by_me=False):
+                sysvar_events.append((system_variable.id, system_variable.value))
 
-            async def on_light(*, light, level=None, colour=None, scene=None, **kwargs):
-                if colour is not None:
-                    colour_events.append((light.address.number, colour))
+            async def on_light(*, light, **kwargs):
+                if light.colour is not None:
+                    colour_events.append((light.address.number, light.colour))
 
             zen.callbacks.button_press = on_button
             zen.callbacks.motion_event = on_motion
