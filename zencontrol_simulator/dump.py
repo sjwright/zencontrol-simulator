@@ -35,25 +35,27 @@ def _hex_int(value: int) -> str:
 
 
 def _colour_dict(colour: Any) -> dict[str, Any] | None:
-    from zencontrol import ZenColourType
+    from zencontrol import ZenRgbColour, ZenTcColour, ZenXyColour
 
-    if colour is None or colour.type is None:
-        return None
-    if colour.type == ZenColourType.TC:
-        return {"type": "tc", "kelvin": colour.kelvin}
-    if colour.type == ZenColourType.RGBWAF:
-        return {
-            "type": "rgbwaf",
-            "r": colour.r,
-            "g": colour.g,
-            "b": colour.b,
-            "w": colour.w if colour.w is not None else 0,
-            "a": colour.a if colour.a is not None else 0,
-            "f": colour.f if colour.f is not None else 0,
-        }
-    if colour.type == ZenColourType.XY:
-        return {"type": "xy", "x": colour.x, "y": colour.y}
-    return None
+    match colour:
+        case None:
+            return None
+        case ZenTcColour(kelvin=kelvin):
+            return {"type": "tc", "kelvin": kelvin}
+        case ZenRgbColour(r=r, g=g, b=b, w=w, a=a, f=f):
+            return {
+                "type": "rgbwaf",
+                "r": r,
+                "g": g,
+                "b": b,
+                "w": w if w is not None else 0,
+                "a": a if a is not None else 0,
+                "f": f if f is not None else 0,
+            }
+        case ZenXyColour(x=x, y=y):
+            return {"type": "xy", "x": x, "y": y}
+        case _:
+            return None
 
 
 def _scene_levels(levels: list[int | None] | None) -> list[int | None]:

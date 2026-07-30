@@ -20,7 +20,7 @@ CONFIG = Path(__file__).resolve().parents[1] / "config.yaml"
 
 zencontrol = pytest.importorskip("zencontrol")
 
-from zencontrol import ZenColour, ZenColourType  # noqa: E402
+from zencontrol import ZenRgbColour, ZenTcColour, ZenXyColour  # noqa: E402
 
 
 def _basic(command: int, address: int = 0, d0: int = 0, d1: int = 0, d2: int = 0, seq: int = 1) -> bytes:
@@ -359,7 +359,7 @@ async def test_live_rgb_and_xy_scene_recall(live_protocol):
     assert await p.dali_query_level(rgb) == 64
     colour = await p.query_dali_colour(rgb)
     assert colour is not None
-    assert colour.type == ZenColourType.RGBWAF
+    assert isinstance(colour, ZenRgbColour)
     assert colour.r == 0 and colour.g == 0 and colour.b == 255
 
     xy = live_protocol.ecg(3)
@@ -367,7 +367,7 @@ async def test_live_rgb_and_xy_scene_recall(live_protocol):
     assert await p.dali_query_level(xy) == 50
     xy_colour = await p.query_dali_colour(xy)
     assert xy_colour is not None
-    assert xy_colour.type == ZenColourType.XY
+    assert isinstance(xy_colour, ZenXyColour)
     assert xy_colour.x == 15000 and xy_colour.y == 18000
 
 
@@ -379,7 +379,7 @@ async def test_live_second_colour_fixtures(live_protocol):
     features = await p.query_dali_colour_features(tc)
     assert features is not None
     assert features.get("supports_tunable") or features.get("colour_temperature")
-    colour = ZenColour(type=ZenColourType.TC, kelvin=5000)
+    colour = ZenTcColour(kelvin=5000)
     assert await p.dali_colour(tc, colour, level=120) is True
     queried = await p.query_dali_colour(tc)
     assert queried is not None and queried.kelvin == 5000
@@ -388,14 +388,14 @@ async def test_live_second_colour_fixtures(live_protocol):
     rgb = live_protocol.ecg(8)
     assert await p.query_dali_device_label(rgb) == "RGB Cove"
     assert await p.dali_colour(
-        rgb, ZenColour(type=ZenColourType.RGBWAF, r=1, g=2, b=3, w=0, a=0, f=0), level=40
+        rgb, ZenRgbColour(r=1, g=2, b=3, w=0, a=0, f=0), level=40
     ) is True
     rgb_q = await p.query_dali_colour(rgb)
     assert rgb_q is not None and rgb_q.r == 1 and rgb_q.g == 2 and rgb_q.b == 3
 
     xy = live_protocol.ecg(9)
     assert await p.query_dali_device_label(xy) == "XY Niche"
-    assert await p.dali_colour(xy, ZenColour(type=ZenColourType.XY, x=1111, y=2222)) is True
+    assert await p.dali_colour(xy, ZenXyColour(x=1111, y=2222)) is True
     xy_q = await p.query_dali_colour(xy)
     assert xy_q is not None and xy_q.x == 1111 and xy_q.y == 2222
 

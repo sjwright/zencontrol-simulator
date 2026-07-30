@@ -123,9 +123,9 @@ async def test_zencontrol_python_discovery_and_control():
             assert world.lights[1].level == 50
 
             # Tunable colour on ECG 0
-            from zencontrol import ZenColour, ZenColourType
+            from zencontrol import ZenTcColour
 
-            tc = ZenColour(type=ZenColourType.TC, kelvin=4000)
+            tc = ZenTcColour(kelvin=4000)
             assert await by_addr[0].set(colour=tc) is True
             await asyncio.sleep(0.2)
             assert world.lights[0].colour is not None

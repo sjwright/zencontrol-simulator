@@ -11,8 +11,9 @@ from conftest import LEGACY_ACK
 zencontrol = pytest.importorskip("zencontrol")
 
 from zencontrol import (  # noqa: E402
-    ZenColour,
-    ZenColourType,
+    ZenRgbColour,
+    ZenTcColour,
+    ZenXyColour,
     ZenEventMask,
     ZenEventMode,
 )
@@ -294,11 +295,11 @@ async def test_group_scene_and_labels(live_protocol):
 async def test_colour_tc_set_and_query(live_protocol):
     p = live_protocol.protocol
     addr = live_protocol.ecg(0)
-    colour = ZenColour(type=ZenColourType.TC, kelvin=4000)
+    colour = ZenTcColour(kelvin=4000)
     assert await p.dali_colour(addr, colour) is True
     queried = await p.query_dali_colour(addr)
     assert queried is not None
-    assert queried.type == ZenColourType.TC
+    assert isinstance(queried, ZenTcColour)
     assert queried.kelvin == 4000
     assert live_protocol.world.lights[0].colour.kelvin == 4000
 
@@ -328,7 +329,7 @@ async def test_colour_only_preserves_level_and_skips_level_event(live_protocol):
     levels.clear()
     colours.clear()
 
-    colour = ZenColour(type=ZenColourType.TC, kelvin=4200)
+    colour = ZenTcColour(kelvin=4200)
     assert await p.dali_colour(addr, colour, level=255) is True
     await _wait(0.35)
 
@@ -342,7 +343,7 @@ async def test_colour_only_preserves_level_and_skips_level_event(live_protocol):
 async def test_colour_rgb_set_and_query(live_protocol):
     p = live_protocol.protocol
     addr = live_protocol.ecg(2)
-    colour = ZenColour(type=ZenColourType.RGBWAF, r=10, g=20, b=30, w=0, a=0, f=0)
+    colour = ZenRgbColour(r=10, g=20, b=30, w=0, a=0, f=0)
     assert await p.dali_colour(addr, colour, level=128) is True
     queried = await p.query_dali_colour(addr)
     assert queried is not None
@@ -660,7 +661,7 @@ async def test_scene_and_colour_events_via_protocol(live_protocol):
     await _wait(0.3)
     assert any(t == "ECG" and n == 0 and s == 1 for t, n, s, _ in scenes)
 
-    tc = ZenColour(type=ZenColourType.TC, kelvin=3500)
+    tc = ZenTcColour(kelvin=3500)
     assert await p.dali_colour(live_protocol.ecg(0), tc) is True
     await _wait(0.3)
     assert any(n == 0 and c is not None and c.kelvin == 3500 for n, c in colours)
@@ -771,11 +772,11 @@ async def test_colour_xy_set_and_query(live_protocol):
     assert features is not None
     assert features.get("supports_xy") is True
 
-    colour = ZenColour(type=ZenColourType.XY, x=12345, y=23456)
+    colour = ZenXyColour(x=12345, y=23456)
     assert await p.dali_colour(addr, colour, level=90) is True
     queried = await p.query_dali_colour(addr)
     assert queried is not None
-    assert queried.type == ZenColourType.XY
+    assert isinstance(queried, ZenXyColour)
     assert queried.x == 12345 and queried.y == 23456
     assert await p.dali_query_level(addr) == 90
     assert live_protocol.world.lights[3].colour.x == 12345
@@ -821,7 +822,7 @@ async def test_broadcast_arc_off_and_scene(live_protocol):
 @pytest.mark.asyncio
 async def test_broadcast_colour_tc(live_protocol):
     p = live_protocol.protocol
-    tc = ZenColour(type=ZenColourType.TC, kelvin=4200)
+    tc = ZenTcColour(kelvin=4200)
     assert await p.dali_colour(live_protocol.broadcast(), tc) is True
     assert live_protocol.world.lights[0].colour.kelvin == 4200
     assert live_protocol.world.lights[3].colour.type == "tc"
