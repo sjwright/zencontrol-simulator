@@ -139,9 +139,9 @@ class Colour:
                     self.r or 0,
                     self.g or 0,
                     self.b or 0,
-                    self.w or 0,
-                    self.a or 0,
-                    self.f or 0,
+                    0xFF if self.w is None else self.w,
+                    0xFF if self.a is None else self.a,
+                    0xFF if self.f is None else self.f,
                 ])
             case "xy":
                 x = self.x or 0
