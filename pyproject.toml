@@ -41,9 +41,21 @@ zencontrol_simulator = ["config.yaml"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 
+[tool.mypy]
+python_version = "3.14"
+# Exhaustive match + case _: is intentional defensive coding against new enum members.
+warn_unreachable = false
+
 [tool.ruff]
 target-version = "py314"
 line-length = 88
 
 [tool.ruff.lint]
 select = ["ASYNC", "B", "E", "F", "I", "UP"]
+ignore = [
+    "ASYNC109", # Timeout parameters are intentional test/helper APIs.
+    "ASYNC240", # Sync Path ops in async tests are fine for local fixtures.
+    "B905",     # zip() without strict= is intentional where lengths match by construction.
+    "E501",     # Preserve existing protocol logging and payload formatting.
+    "I001",     # Import sorting is cosmetic; leave existing layout alone.
+]

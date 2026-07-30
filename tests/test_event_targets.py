@@ -9,8 +9,6 @@ Conventions (matching real controllers / existing simulator behaviour):
 
 from pathlib import Path
 
-import pytest
-
 from zencontrol_simulator.events import EventEmitter
 from zencontrol_simulator.handlers import CMD, LEGACY_ACK_COMMANDS, CommandDispatcher
 from zencontrol_simulator.protocol import ParseFailure, ResponseType, checksum, parse_request
