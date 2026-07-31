@@ -139,7 +139,7 @@ async def _raw_byte(tpi: Any, controller: Any, command: int, address: int = 0) -
 
 
 async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
-    from zencontrol import ZenInstanceType
+    from zencontrol import ZenCgType, ZenInstanceType
     from zencontrol.api.commands import CMD
     from zencontrol.api.types import Const
 
@@ -172,8 +172,8 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
     profile_info = await tpi.query_profile_information(controller)
     if profile_info:
         state, _profiles_detail = profile_info
-        current_profile = int(state.get("current_active_profile", current_profile or 0))
-        last_scheduled = int(state.get("last_scheduled_profile", last_scheduled))
+        current_profile = int(state.current_active_profile)
+        last_scheduled = int(state.last_scheduled_profile)
 
     profile_numbers = await tpi.query_profile_numbers(controller) or []
     if current_profile is not None and current_profile not in profile_numbers:
@@ -271,14 +271,14 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
         }
         colour = None
         colour_temp_limits = None
-        if 8 in cg_types:
+        if ZenCgType.COLOUR_CONTROL in cg_types:
             features = await tpi.query_dali_colour_features(addr)
             if features:
                 colour_features = {
-                    "supports_xy": bool(features.get("supports_xy", False)),
-                    "supports_tunable": bool(features.get("supports_tunable", False)),
-                    "primary_count": int(features.get("primary_count", 0)),
-                    "rgbwaf_channels": int(features.get("rgbwaf_channels", 0)),
+                    "supports_xy": bool(features.supports_xy),
+                    "supports_tunable": bool(features.supports_tunable),
+                    "primary_count": int(features.primary_count),
+                    "rgbwaf_channels": int(features.rgbwaf_channels),
                 }
             colour = _colour_dict(await tpi.query_dali_colour(addr))
             if colour_features["supports_tunable"]:
@@ -358,10 +358,10 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
                 timers = await tpi.query_occupancy_instance_timers(inst)
                 if timers:
                     entry["timers"] = {
-                        "deadtime": int(timers["deadtime"]),
-                        "hold": int(timers["hold"]),
-                        "report": int(timers["report"]),
-                        "last_detect": int(timers["last_detect"]),
+                        "deadtime": int(timers.deadtime),
+                        "hold": int(timers.hold),
+                        "report": int(timers.report),
+                        "last_detect": int(timers.last_detect),
                     }
                 else:
                     entry["timers"] = {

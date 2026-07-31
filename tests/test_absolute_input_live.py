@@ -130,7 +130,7 @@ async def test_absolute_input_inject_rejects_wrong_instance_type(live_protocol):
 @pytest.mark.asyncio
 async def test_absolute_input_event_filter_mutes_emit(live_protocol):
     """DALI_ADD_TPI_EVENT_FILTER can mute ABSOLUTE_INPUT_EVENT for an ECD."""
-    from zencontrol import ZenEventMode
+    from zencontrol import Transport, ZenEventMode
 
     p = live_protocol.protocol
     c = live_protocol.controller
@@ -146,7 +146,7 @@ async def test_absolute_input_event_filter_mutes_emit(live_protocol):
     # Filters are ignored unless DALI_EVENT_FILTERING is enabled in event mode.
     assert await p.tpi_event_emit(
         c,
-        ZenEventMode(enabled=True, filtering=True, unicast=True, multicast=False),
+        ZenEventMode(enabled=True, filtering=True, transport=Transport.UNICAST),
     ) is True
 
     mask = ZenEventMask.ABSOLUTE_INPUT

@@ -308,11 +308,13 @@ def test_sysvar_simulation_leaves_non_simulate_ids():
 
 @pytest.mark.asyncio
 async def test_live_switching_gear_and_group_5(live_protocol):
+    from zencontrol import ZenCgType
+
     p = live_protocol.protocol
     for n in (10, 11):
         addr = live_protocol.ecg(n)
         cg = await p.dali_query_cg_type(addr)
-        assert cg is not None and 7 in cg
+        assert cg is not None and ZenCgType.RELAY in cg
         assert await p.dali_arc_level(addr, 254) is LEGACY_ACK
         assert await p.dali_query_level(addr) == 254
         assert await p.dali_off(addr) is LEGACY_ACK
@@ -378,7 +380,7 @@ async def test_live_second_colour_fixtures(live_protocol):
     assert await p.query_dali_device_label(tc) == "Office Desk"
     features = await p.query_dali_colour_features(tc)
     assert features is not None
-    assert features.get("supports_tunable") or features.get("colour_temperature")
+    assert features.supports_tunable
     colour = ZenTcColour(kelvin=5000)
     assert await p.dali_colour(tc, colour, level=120) is True
     queried = await p.query_dali_colour(tc)
@@ -480,5 +482,5 @@ async def test_live_entrance_occupancy_timers(live_protocol):
     p = live_protocol.protocol
     porch = await p.query_occupancy_instance_timers(live_protocol.instance(10, 0, type_code=3))
     entrance = await p.query_occupancy_instance_timers(live_protocol.instance(11, 0, type_code=3))
-    assert porch is not None and porch["hold"] == 60
-    assert entrance is not None and entrance["hold"] == 90
+    assert porch is not None and porch.hold == 60
+    assert entrance is not None and entrance.hold == 90

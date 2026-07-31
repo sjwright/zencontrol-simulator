@@ -11,6 +11,7 @@ from conftest import LEGACY_ACK
 zencontrol = pytest.importorskip("zencontrol")
 
 from zencontrol import (  # noqa: E402
+    Transport,
     ZenRgbColour,
     ZenTcColour,
     ZenXyColour,
@@ -196,6 +197,8 @@ async def test_discover_devices_and_instances(live_protocol):
 
 @pytest.mark.asyncio
 async def test_light_identity_and_features(live_protocol):
+    from zencontrol import ZenCgType
+
     p = live_protocol.protocol
     ecg0 = live_protocol.ecg(0)
     ecg1 = live_protocol.ecg(1)
@@ -206,11 +209,11 @@ async def test_light_identity_and_features(live_protocol):
     assert serial is not None and serial > 0
 
     cg = await p.dali_query_cg_type(ecg0)
-    assert cg is not None and 6 in cg and 8 in cg
+    assert cg is not None and ZenCgType.LED in cg and ZenCgType.COLOUR_CONTROL in cg
 
     features = await p.query_dali_colour_features(ecg0)
     assert features is not None
-    assert features.get("supports_tunable") or features.get("colour_temperature")
+    assert features.supports_tunable
 
     rgb = await p.query_dali_colour_features(ecg2)
     assert rgb is not None
@@ -455,9 +458,9 @@ async def test_occupancy_timers(live_protocol):
     inst = live_protocol.instance(0, 2, type_code=3)
     timers = await p.query_occupancy_instance_timers(inst)
     assert timers is not None
-    assert timers["hold"] == 60
-    assert timers["deadtime"] == 1
-    assert "last_detect" in timers
+    assert timers.hold == 60
+    assert timers.deadtime == 1
+    assert isinstance(timers.last_detect, int)
 
 
 @pytest.mark.asyncio
@@ -471,7 +474,7 @@ async def test_occupy_updates_last_detect_query(live_protocol):
     assert live_protocol.sim.inject_occupancy(0, 2, occupied=True) is True
     timers = await p.query_occupancy_instance_timers(inst)
     assert timers is not None
-    assert timers["last_detect"] <= 1
+    assert timers.last_detect <= 1
 
 
 @pytest.mark.asyncio
@@ -519,7 +522,7 @@ async def test_custom_fade_and_stop(live_protocol):
     assert await p.dali_custom_fade(addr, 100, 5) is True
     status = await p.dali_query_control_gear_status(addr)
     assert status is not None
-    assert status["fade_running"] is True
+    assert status.fade_running is True
     level = await p.dali_query_level(addr)
     assert level is not None
     assert 0 <= level <= 100
@@ -527,7 +530,7 @@ async def test_custom_fade_and_stop(live_protocol):
     assert not (live_protocol.world.lights[1].status & 0x10)
     status2 = await p.dali_query_control_gear_status(addr)
     assert status2 is not None
-    assert status2["fade_running"] is False
+    assert status2.fade_running is False
 
 
 @pytest.mark.asyncio
@@ -546,15 +549,15 @@ async def test_dapc_sequence(live_protocol):
 async def test_tpi_event_mode_and_unicast_roundtrip(live_protocol):
     p, c = live_protocol.protocol, live_protocol.controller
     assert await p.tpi_event_emit(
-        c, ZenEventMode(enabled=True, filtering=False, unicast=False, multicast=True)
+        c, ZenEventMode(enabled=True, filtering=False, transport=Transport.MULTICAST)
     ) is True
     assert await p.query_tpi_event_emit_state(c) is True
 
     await p.set_tpi_event_unicast_address(c, ipaddr="127.0.0.1", port=6970)
     info = await p.query_tpi_event_unicast_address(c)
     assert info is not None
-    assert info["port"] == 6970
-    assert info["ip"] == "127.0.0.1" or info.get("address") == "127.0.0.1" or "127.0.0.1" in str(info)
+    assert info.port == 6970
+    assert info.ip == "127.0.0.1" or "127.0.0.1" in str(info)
 
 
 @pytest.mark.asyncio
@@ -565,8 +568,8 @@ async def test_clear_tpi_event_unicast_address(live_protocol):
     await p.set_tpi_event_unicast_address(c)
     info = await p.query_tpi_event_unicast_address(c)
     assert info is not None
-    assert info["port"] == 0
-    assert info["ip"] == "0.0.0.0"
+    assert info.port == 0
+    assert info.ip == "0.0.0.0"
     assert live_protocol.world.unicast_ip is None
     assert live_protocol.world.unicast_port == 0
 
@@ -646,7 +649,7 @@ async def test_level_and_button_event_filters_mute_emit(live_protocol):
 
     assert await p.tpi_event_emit(
         c,
-        ZenEventMode(enabled=True, filtering=True, unicast=True, multicast=False),
+        ZenEventMode(enabled=True, filtering=True, transport=Transport.UNICAST),
     ) is True
     assert await p.dali_add_tpi_event_filter(
         live_protocol.ecg(1), ZenEventMask.LEVEL_CHANGE_V2
@@ -819,7 +822,7 @@ async def test_colour_xy_set_and_query(live_protocol):
     addr = live_protocol.ecg(3)
     features = await p.query_dali_colour_features(addr)
     assert features is not None
-    assert features.get("supports_xy") is True
+    assert features.supports_xy is True
 
     colour = ZenXyColour(x=12345, y=23456)
     assert await p.dali_colour(addr, colour, level=90) is True
@@ -893,7 +896,7 @@ async def test_group_last_scene_and_status(live_protocol):
     assert await p.dali_custom_fade(live_protocol.ecg(1), 80, 5) is True
     status = await p.dali_query_control_gear_status(g0)
     assert status is not None
-    assert status["fade_running"] is True
+    assert status.fade_running is True
 
 
 @pytest.mark.asyncio
@@ -996,7 +999,7 @@ async def test_fade_auto_complete_live(live_protocol):
     await _wait(1.2)
     status = await p.dali_query_control_gear_status(addr)
     assert status is not None
-    assert status["fade_running"] is False
+    assert status.fade_running is False
     assert await p.dali_query_level(addr) == 50
 
 
