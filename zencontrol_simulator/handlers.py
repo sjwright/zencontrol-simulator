@@ -136,6 +136,28 @@ MAX_SCENE = 12
 # layer pending hardware confirmation (DOCUMENTATION_ISSUES.md §1.1).
 SCENE_LEVEL_SLOTS = 16
 
+# CLI -t: approximate live-controller reply latency (milliseconds).
+DEFAULT_RESPONSE_LATENCY_MS = 10
+RESPONSE_LATENCY_MS: dict[int, int] = {
+    CMD["QUERY_GROUP_LABEL"]: 20,
+    CMD["QUERY_SCENE_LABEL_FOR_GROUP"]: 20,
+    CMD["QUERY_CONTROLLER_LABEL"]: 20,
+    CMD["QUERY_GROUP_NUMBERS"]: 30,
+    CMD["QUERY_DALI_COLOUR_FEATURES"]: 50,
+    CMD["QUERY_DALI_COLOUR_TEMP_LIMITS"]: 50,
+    CMD["QUERY_DALI_INSTANCE_LABEL"]: 100,
+    CMD["QUERY_SCENE_NUMBERS_FOR_GROUP"]: 100,
+}
+
+
+def response_latency_s(command: int | None, *, enabled: bool) -> float:
+    """Seconds to wait before sending a reply when ``-t`` latency sim is on."""
+    if not enabled:
+        return 0.0
+    if command is None:
+        return DEFAULT_RESPONSE_LATENCY_MS / 1000.0
+    return RESPONSE_LATENCY_MS.get(command, DEFAULT_RESPONSE_LATENCY_MS) / 1000.0
+
 
 def _ok(seq: int) -> bytes:
     return build_response(ResponseType.OK, seq)
@@ -572,10 +594,12 @@ class CommandDispatcher:
 
     def _query_ean(self, request: Request) -> bytes:
         wire = self._addr(request)
-        if self._ecg_or_ecd(wire) is None:
+        obj = self._ecg_or_ecd(wire)
+        if obj is None:
             return _no_answer(request.seq)
-        # Synthetic 11-digit GTIN: 10000000000 + wire address (ECG 0–63 / ECD 64–127)
-        return _answer(request.seq, int_to_be(10_000_000_000 + wire, 6))
+        # Prefer YAML ean; otherwise synthetic 11-digit GTIN 10000000000 + wire.
+        ean = obj.ean if obj.ean is not None else 10_000_000_000 + wire
+        return _answer(request.seq, int_to_be(ean, 6))
 
     def _query_dali_fitting_number(self, request: Request) -> bytes:
         # Controller fitting + "." + address; ECD uses address+100 (ECD 4 → "1.104").

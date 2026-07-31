@@ -61,6 +61,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "-t",
+        "--simulate-timing",
+        action="store_true",
+        help=(
+            "Delay replies to approximate live controller RTT "
+            "(10ms default; 20/30/50/100ms for select slow queries)"
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -95,6 +104,8 @@ def main(argv: list[str] | None = None) -> None:
         world.startup_delay_s = float(args.startup_delay)
         world.startup_complete = True  # eventual state after the delay
         world.started_at = time.time()
+    if args.simulate_timing:
+        world.simulate_response_latency = True
 
     simulator = Simulator(world)
     try:

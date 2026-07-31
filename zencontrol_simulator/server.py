@@ -8,7 +8,7 @@ import socket
 import time
 
 from .events import EventEmitter
-from .handlers import CommandDispatcher
+from .handlers import CommandDispatcher, response_latency_s
 from .protocol import (
     MAX_TCP_SESSIONS,
     ParseFailure,
@@ -31,16 +31,25 @@ from .world import (
 logger = logging.getLogger(__name__)
 
 
-def dispatch_request(dispatcher: CommandDispatcher, data: bytes) -> bytes | None:
-    """Parse one request frame and return a response, or None if unparseable."""
+def dispatch_request(
+    dispatcher: CommandDispatcher, data: bytes
+) -> tuple[bytes | None, float]:
+    """Parse one request frame; return (response, delay_s) or (None, 0) if dropped."""
     parsed = parse_request(data)
     if parsed is None:
-        return None
+        return None, 0.0
+    enabled = dispatcher.world.simulate_response_latency
     if isinstance(parsed, ParseFailure):
         dispatcher.error_count += 1
-        return build_error(parsed.seq, parsed.error)
+        return (
+            build_error(parsed.seq, parsed.error),
+            response_latency_s(None, enabled=enabled),
+        )
     assert isinstance(parsed, Request)
-    return dispatcher.handle(parsed)
+    return (
+        dispatcher.handle(parsed),
+        response_latency_s(parsed.command, enabled=enabled),
+    )
 
 
 class SimulatorProtocol(asyncio.DatagramProtocol):
@@ -54,12 +63,18 @@ class SimulatorProtocol(asyncio.DatagramProtocol):
         logger.info("Listening for TPI commands on UDP %s:%s", sockname[0], sockname[1])
 
     def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
-        response = dispatch_request(self.dispatcher, data)
+        response, delay_s = dispatch_request(self.dispatcher, data)
         if response is None:
             logger.debug("Dropping unparseable packet from %s (%d bytes)", addr, len(data))
             return
         if response[0] == ResponseType.ERROR:
             logger.debug("Bad request from %s", addr)
+        if delay_s <= 0:
+            self._send(response, addr)
+            return
+        asyncio.get_running_loop().call_later(delay_s, self._send, response, addr)
+
+    def _send(self, response: bytes, addr: tuple[str, int]) -> None:
         if self.transport is not None:
             self.transport.sendto(response, addr)
 
@@ -97,6 +112,12 @@ class Simulator:
             logger.info(
                 "Startup delay %.1fs — QUERY_CONTROLLER_STARTUP_COMPLETE incomplete until then",
                 self.world.startup_delay_s,
+            )
+        if self.world.simulate_response_latency:
+            logger.info(
+                "Response latency simulation on — default 10ms "
+                "(labels 20ms; group numbers 30ms; colour features/limits 50ms; "
+                "instance label / group scene numbers 100ms)"
             )
         loop = asyncio.get_running_loop()
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -237,10 +258,12 @@ class Simulator:
                     frame = extract_request_frame(buf)
                     if frame is None:
                         break
-                    response = dispatch_request(self.dispatcher, frame)
+                    response, delay_s = dispatch_request(self.dispatcher, frame)
                     if response is None:
                         logger.debug("TCP drop unparseable frame from %s (%d bytes)", peer, len(frame))
                         continue
+                    if delay_s > 0:
+                        await asyncio.sleep(delay_s)
                     writer.write(response)
                     await writer.drain()
         except (ConnectionResetError, BrokenPipeError, asyncio.CancelledError):

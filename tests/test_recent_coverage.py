@@ -180,13 +180,21 @@ def test_instance_fitting_rejects_ecg_address():
 
 
 def test_ean_for_ecg_and_ecd():
-    disp, _, _ = _disp()
-    for addr in (0, 11, 64, 64 + 12):
+    disp, world, _ = _disp()
+    # ECG 0 / 11 have YAML eans; ECD 0 has none (synthetic); ECD 12 has YAML ean.
+    expected = {
+        0: world.lights[0].ean,
+        11: world.lights[11].ean,
+        64: 10_000_000_000 + 64,  # device 0: no YAML ean → synthetic
+        64 + 12: world.devices[12].ean,
+    }
+    for addr, ean in expected.items():
+        assert ean is not None
         req = parse_request(_basic(CMD["QUERY_DALI_EAN"], address=addr))
         assert not isinstance(req, ParseFailure)
         resp = disp.handle(req)
         assert resp[0] == ResponseType.ANSWER
-        assert int.from_bytes(resp[3:9], "big") == 10_000_000_000 + addr
+        assert int.from_bytes(resp[3:9], "big") == ean
 
 
 @pytest.mark.asyncio
@@ -196,7 +204,8 @@ async def test_live_fitting_and_ean(live_protocol):
     assert await p.query_dali_fitting_number(live_protocol.ecg(7)) == "1.7"
     assert await p.query_dali_fitting_number(live_protocol.ecd(4)) == "1.104"
     assert await p.query_dali_instance_fitting_number(live_protocol.instance(4, 2)) == "1.104.2"
-    assert await p.query_dali_ean(live_protocol.ecg(0)) == 10_000_000_000
+    assert await p.query_dali_ean(live_protocol.ecg(0)) == live_protocol.world.lights[0].ean
+    # ECD 0 has no YAML ean → synthetic GTIN
     assert await p.query_dali_ean(live_protocol.ecd(0)) == 10_000_000_000 + 64
     assert await p.query_dali_ean(live_protocol.ecg(50)) is None
 

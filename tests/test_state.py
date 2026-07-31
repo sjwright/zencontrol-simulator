@@ -1115,8 +1115,16 @@ def test_query_dali_fitting_number():
 
 
 def test_query_dali_ean():
-    disp, _, _ = _disp()
-    for addr, expected in ((0, 10_000_000_000), (1, 10_000_000_001), (64, 10_000_000_064)):
+    disp, world, _ = _disp()
+    # YAML ean when present; otherwise synthetic 10000000000 + wire address.
+    cases = (
+        (0, world.lights[0].ean),
+        (1, world.lights[1].ean),
+        (2, 10_000_000_000 + 2),  # RGB light: no YAML ean
+        (64, 10_000_000_000 + 64),  # ECD 0: no YAML ean
+    )
+    for addr, expected in cases:
+        assert expected is not None
         req = parse_request(_basic(CMD["QUERY_DALI_EAN"], address=addr))
         assert not isinstance(req, ParseFailure)
         resp = disp.handle(req)
@@ -1126,6 +1134,41 @@ def test_query_dali_ean():
     missing = parse_request(_basic(CMD["QUERY_DALI_EAN"], address=50))
     assert not isinstance(missing, ParseFailure)
     assert disp.handle(missing)[0] == ResponseType.NO_ANSWER
+
+
+def test_query_dali_ean_from_yaml(tmp_path):
+    cfg = tmp_path / "ean.yaml"
+    cfg.write_text(
+        """
+controller:
+  bind_host: "127.0.0.1"
+  bind_port: 5108
+  mac: "02:00:00:00:00:01"
+  label: EAN
+lights:
+  - address: 0
+    label: Gear
+    ean: 9351787000011
+devices:
+  - address: 0
+    label: Pad
+    ean: 9415000000001
+    instances:
+      - number: 0
+        type: push_button
+""",
+        encoding="utf-8",
+    )
+    world = load_world(cfg)
+    assert world.lights[0].ean == 9351787000011
+    assert world.devices[0].ean == 9415000000001
+    disp = CommandDispatcher(world, EventEmitter(world))
+    for addr, expected in ((0, 9351787000011), (64, 9415000000001)):
+        req = parse_request(_basic(CMD["QUERY_DALI_EAN"], address=addr))
+        assert not isinstance(req, ParseFailure)
+        resp = disp.handle(req)
+        assert resp[0] == ResponseType.ANSWER
+        assert int.from_bytes(resp[3:9], "big") == expected
 
 
 def test_xy_colour_set_and_query():
@@ -1181,6 +1224,35 @@ def test_cli_startup_delay_flag():
     args = build_parser().parse_args(["-s", "2"])
     assert args.startup_delay == 2.0
     assert build_parser().parse_args([]).startup_delay == 0
+
+
+def test_cli_simulate_timing_flag():
+    from zencontrol_simulator.__main__ import build_parser
+
+    assert build_parser().parse_args(["-t"]).simulate_timing is True
+    assert build_parser().parse_args([]).simulate_timing is False
+
+
+def test_response_latency_table():
+    from zencontrol_simulator.handlers import (
+        CMD,
+        DEFAULT_RESPONSE_LATENCY_MS,
+        response_latency_s,
+    )
+
+    assert response_latency_s(CMD["DALI_QUERY_LEVEL"], enabled=False) == 0.0
+    assert response_latency_s(CMD["DALI_QUERY_LEVEL"], enabled=True) == pytest.approx(0.01)
+    assert response_latency_s(CMD["QUERY_GROUP_LABEL"], enabled=True) == pytest.approx(0.02)
+    assert response_latency_s(CMD["QUERY_SCENE_LABEL_FOR_GROUP"], enabled=True) == pytest.approx(0.02)
+    assert response_latency_s(CMD["QUERY_CONTROLLER_LABEL"], enabled=True) == pytest.approx(0.02)
+    assert response_latency_s(CMD["QUERY_GROUP_NUMBERS"], enabled=True) == pytest.approx(0.03)
+    assert response_latency_s(CMD["QUERY_DALI_COLOUR_FEATURES"], enabled=True) == pytest.approx(0.05)
+    assert response_latency_s(CMD["QUERY_DALI_COLOUR_TEMP_LIMITS"], enabled=True) == pytest.approx(0.05)
+    assert response_latency_s(CMD["QUERY_DALI_INSTANCE_LABEL"], enabled=True) == pytest.approx(0.1)
+    assert response_latency_s(CMD["QUERY_SCENE_NUMBERS_FOR_GROUP"], enabled=True) == pytest.approx(0.1)
+    assert response_latency_s(None, enabled=True) == pytest.approx(
+        DEFAULT_RESPONSE_LATENCY_MS / 1000.0
+    )
 
 
 def test_inject_level_scene_colour_profile(monkeypatch):

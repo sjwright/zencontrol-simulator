@@ -81,6 +81,59 @@ async def test_startup_delay_two_seconds_live():
         await sim.stop()
 
 
+@pytest.mark.asyncio
+async def test_simulate_response_latency_live():
+    """Live: -t delays replies (~10ms default, ~100ms for instance labels)."""
+    from zencontrol import ZenAddress, ZenAddressType, ZenInstance, ZenInstanceType
+    from zencontrol.testing import ZenTestClient
+    from zencontrol_simulator.server import Simulator
+    from zencontrol_simulator.world import load_world
+
+    world = load_world(CONFIG)
+    world.bind_host = "127.0.0.1"
+    world.bind_port = 0
+    world.heartbeat_interval = 0
+    world.simulate_response_latency = True
+
+    sim = Simulator(world)
+    await sim.start()
+    assert sim._transport is not None
+    port = sim._transport.get_extra_info("sockname")[1]
+    mac = ":".join(f"{b:02x}" for b in world.mac)
+
+    protocol = ZenTestClient(unicast=True, listen_ip="127.0.0.1", listen_port=0)
+    controller = protocol.context.controller(
+        id=1,
+        name="sim",
+        label="Sim",
+        host="127.0.0.1",
+        port=port,
+        mac=mac,
+    )
+    protocol.set_controllers([controller])
+    try:
+        t0 = time.perf_counter()
+        assert await protocol.query_controller_label(controller) == world.label
+        fast_ms = (time.perf_counter() - t0) * 1000
+        assert 8 <= fast_ms <= 80, f"default latency out of range: {fast_ms:.1f}ms"
+
+        inst = ZenInstance(
+            address=ZenAddress(
+                controller=controller, type=ZenAddressType.ECD, number=0
+            ),
+            number=0,
+            type=ZenInstanceType.PUSH_BUTTON,
+        )
+        t0 = time.perf_counter()
+        label = await protocol.query_dali_instance_label(inst)
+        slow_ms = (time.perf_counter() - t0) * 1000
+        assert label == "On/Off"
+        assert 80 <= slow_ms <= 250, f"instance-label latency out of range: {slow_ms:.1f}ms"
+    finally:
+        await protocol.aclose()
+        await sim.stop()
+
+
 # ---------------------------------------------------------------------------
 # Discovery
 # ---------------------------------------------------------------------------

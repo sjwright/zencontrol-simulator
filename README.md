@@ -23,6 +23,7 @@ zencontrol-simulator                 # uses ./config.yaml
 zencontrol-simulator -v              # debug logging
 zencontrol-simulator -i              # interactive event injection
 zencontrol-simulator -s 2            # simulate startup delay in seconds
+zencontrol-simulator -t              # simulate live controller reply latency
 
 # Snapshot a live controller into a simulator YAML
 zencontrol-dump -ip 1.2.3.4
@@ -64,6 +65,13 @@ Note: PDF instance `OCCUPANCY_EVENT` is motion-only (no “not detected”); pay
 byte 2 is unused (`0x01`). `zencontrol-python` treats any `IS_OCCUPIED` as motion
 and clears occupied via the hold timer. Occupancy timer queries return **seconds
 since last motion** (wall-clock), matching hardware.
+
+With `-t` / `--simulate-timing`, UDP/TCP replies are delayed to approximate live
+controller RTT: **10 ms** for most commands, **20 ms** for `QUERY_GROUP_LABEL` /
+`QUERY_SCENE_LABEL_FOR_GROUP` / `QUERY_CONTROLLER_LABEL`, **30 ms** for
+`QUERY_GROUP_NUMBERS`, **50 ms** for `QUERY_DALI_COLOUR_FEATURES` /
+`QUERY_DALI_COLOUR_TEMP_LIMITS`, and **100 ms** for `QUERY_DALI_INSTANCE_LABEL` /
+`QUERY_SCENE_NUMBERS_FOR_GROUP`.
 
 ## Sample world
 
@@ -211,7 +219,7 @@ Status legend: **Simulated** = responds with some degree of correctness / simula
 | `0xB4` | DALI_CUSTOM_FADE                       | Simulated  | Fade seconds BE16; query interpolates; V2 = destination   |
 | `0xB5` | DALI_GO_TO_LAST_ACTIVE_LEVEL           | Simulated  | Per-member; fallback 254; ack `NO_ANSWER`                 |
 | `0xB7` | QUERY_DALI_INSTANCE_LABEL              | Simulated  | ECD wire + instance in data lo                            |
-| `0xB8` | QUERY_DALI_EAN                         | Stub       | Synthetic GTIN `10000000000 + addr` (6-byte BE)           |
+| `0xB8` | QUERY_DALI_EAN                         | Simulated  | YAML `ean` or synthetic GTIN `10000000000 + addr`         |
 | `0xB9` | QUERY_DALI_SERIAL                      | Simulated  | 8-byte BE serial ECG/ECD                                  |
 | `0xC0` | CHANGE_PROFILE_NUMBER                  | Simulated  | `0xFFFF` → last scheduled; unknown → `CMD_REFUSED`        |
 | `0xC1` | DALI_STOP_FADE                         | Simulated  | Freezes mid-fade + `LEVEL_CHANGE_V2`                      |

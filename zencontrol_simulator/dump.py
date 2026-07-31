@@ -1,7 +1,7 @@
 """Dump a live Zencontrol controller into a simulator config YAML.
 
 Read-only: queries labels, levels, colour, scenes, groups, ECDs/instances,
-profiles, and system variables. Does not send control commands.
+profiles, EANs, and system variables. Does not send control commands.
 
 Example:
   zencontrol-dump -ip 1.2.3.4 -port 5108 -out config2.yaml
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import re
 import sys
 from pathlib import Path
@@ -19,6 +20,59 @@ from typing import Any
 import yaml
 
 LOGGER = logging.getLogger("zencontrol-dump")
+
+
+def _ceil_tenths(seconds: float) -> float:
+    """Round up to one decimal place."""
+    return math.ceil(seconds * 10.0 - 1e-12) / 10.0
+
+
+def format_api_timing_report(stats: dict[str, dict[str, float | int]]) -> str:
+    """Format min/avg/max/n (msec) and total (seconds, ceil .1) as a YAML-comment table."""
+    if not stats:
+        return "# API response times (msec): (no samples)\n"
+
+    rows: list[tuple[str, str, str, str, str, str]] = []
+    for name in sorted(stats):
+        s = stats[name]
+        n = int(s["n"])
+        total_ms = float(s["total"]) if "total" in s else float(s["avg"]) * n
+        total_s = _ceil_tenths(total_ms / 1000.0)
+        rows.append((
+            name,
+            f"{float(s['min']):.1f}",
+            f"{float(s['avg']):.1f}",
+            f"{float(s['max']):.1f}",
+            str(n),
+            f"{total_s:.1f}",
+        ))
+
+    headers = ("API", "min", "avg", "max", "n", "total s")
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+
+    def fmt_row(cells: tuple[str, ...] | list[str], *, align_nums: bool = True) -> str:
+        parts: list[str] = []
+        for i, cell in enumerate(cells):
+            if i == 0 or not align_nums:
+                parts.append(cell.ljust(widths[i]))
+            else:
+                parts.append(cell.rjust(widths[i]))
+        return "| " + " | ".join(parts) + " |"
+
+    sep = "+-" + "-+-".join("-" * w for w in widths) + "-+"
+    lines = [
+        "# API response times (msec):",
+        f"# {sep}",
+        f"# {fmt_row(headers, align_nums=False)}",
+        f"# {sep}",
+    ]
+    for row in rows:
+        lines.append(f"# {fmt_row(row)}")
+    lines.append(f"# {sep}")
+    return "\n".join(lines) + "\n"
 
 
 def sanitize_controller_label(label: str) -> str:
@@ -78,13 +132,15 @@ def _scene_colours(colours: list[Any] | None) -> list[dict[str, Any] | None]:
 
 async def _raw_byte(tpi: Any, controller: Any, command: int, address: int = 0) -> int | None:
     response = await tpi._send_basic(controller, command, address)
-    if response and len(response) >= 1:
-        return int(response[0])
+    data = tpi._response_to_bytes_or_none(response)
+    if data and len(data) >= 1:
+        return int(data[0])
     return None
 
 
 async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
     from zencontrol import ZenInstanceType
+    from zencontrol.api.commands import CMD
     from zencontrol.api.types import Const
 
     instance_type_names = {
@@ -109,7 +165,7 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
     label = await tpi.query_controller_label(controller) or controller.label or "Controller"
     startup = await tpi.query_controller_startup_complete(controller)
     dali_ready = await tpi.query_is_dali_ready(controller)
-    event_mode = await _raw_byte(tpi, controller, tpi.CMD["QUERY_TPI_EVENT_EMIT_STATE"])
+    event_mode = await _raw_byte(tpi, controller, CMD.QUERY_TPI_EVENT_EMIT_STATE)
 
     current_profile = await tpi.query_current_profile_number(controller)
     last_scheduled = current_profile or 0
@@ -188,7 +244,7 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
     LOGGER.info("Control gear: %d", len(gears))
     for addr in sorted(gears, key=lambda a: a.number):
         status_raw = await _raw_byte(
-            tpi, controller, tpi.CMD["DALI_QUERY_CONTROL_GEAR_STATUS"], addr.ecg()
+            tpi, controller, CMD.DALI_QUERY_CONTROL_GEAR_STATUS, addr.ecg()
         )
         # Skip gear that does not answer status (absent / failed)
         if status_raw is None:
@@ -197,6 +253,7 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
 
         dlabel = await tpi.query_dali_device_label(addr)
         serial = await tpi.query_dali_serial(addr)
+        ean = await tpi.query_dali_ean(addr)
         level = await tpi.dali_query_level(addr)
         min_level = await tpi.dali_query_min_level(addr)
         max_level = await tpi.dali_query_max_level(addr)
@@ -234,6 +291,7 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
             "address": int(addr.number),
             "label": dlabel or f"Light {addr.number}",
             "serial": _hex_int(int(serial)) if serial else 0,
+            **({"ean": int(ean)} if ean is not None else {}),
             "level": 0 if level is None else int(level),
             "min_level": 1 if min_level is None else int(min_level),
             "max_level": 254 if max_level is None else int(max_level),
@@ -273,6 +331,7 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
     for ecd in sorted(ecds, key=lambda a: a.number):
         dlabel = await tpi.query_dali_device_label(ecd)
         serial = await tpi.query_dali_serial(ecd)
+        ean = await tpi.query_dali_ean(ecd)
         instances = await tpi.query_instances_by_address(ecd) or []
         inst_list: list[dict[str, Any]] = []
         for inst in sorted(instances, key=lambda i: i.number):
@@ -325,6 +384,7 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
             "address": int(ecd.number),
             "label": dlabel or f"Device {ecd.number}",
             "serial": _hex_int(int(serial)) if serial else 0,
+            **({"ean": int(ean)} if ean is not None else {}),
             "instances": inst_list,
         })
 
@@ -378,7 +438,12 @@ def _prepare_for_yaml(obj: Any) -> Any:
     return obj
 
 
-def write_yaml(path: Path, world: dict[str, Any]) -> None:
+def write_yaml(
+    path: Path,
+    world: dict[str, Any],
+    *,
+    timing_stats: dict[str, dict[str, float | int]] | None = None,
+) -> None:
     class Dumper(yaml.SafeDumper):
         pass
 
@@ -401,6 +466,9 @@ def write_yaml(path: Path, world: dict[str, Any]) -> None:
             allow_unicode=True,
             width=100,
         )
+        if timing_stats is not None:
+            fh.write("\n")
+            fh.write(format_api_timing_report(timing_stats))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -455,6 +523,7 @@ async def _dump(args: argparse.Namespace) -> None:
             mac=args.mac,
         )
         tpi.set_controllers([ctrl])
+        tpi.start_api_timing()
 
         ready = await tpi.query_controller_startup_complete(ctrl)
         if ready is False:
@@ -464,10 +533,12 @@ async def _dump(args: argparse.Namespace) -> None:
             LOGGER.warning("DALI bus not ready — continuing anyway")
 
         world = await dump_controller(tpi, ctrl)
+        timing_stats = tpi.api_timing_stats()
+        tpi.stop_api_timing()
 
     label = world["controller"]["label"]
     out = args.out or Path(f"config-{sanitize_controller_label(label)}.yaml")
-    write_yaml(out, world)
+    write_yaml(out, world, timing_stats=timing_stats)
     LOGGER.info(
         "Wrote %s (%d lights, %d groups, %d devices, %d profiles, %d sysvars)",
         out,
@@ -487,7 +558,7 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     try:
-        from zencontrol import run_with_keyboard_interrupt
+        import zencontrol  # noqa: F401
     except ImportError:
         LOGGER.error(
             "zencontrol-python is required for zencontrol-dump "
@@ -495,7 +566,13 @@ def main(argv: list[str] | None = None) -> None:
         )
         sys.exit(1)
 
-    run_with_keyboard_interrupt(lambda: _dump(args))
+    import asyncio
+
+    try:
+        asyncio.run(_dump(args))
+    except KeyboardInterrupt:
+        LOGGER.info("Interrupted")
+        sys.exit(130)
 
 
 if __name__ == "__main__":

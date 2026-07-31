@@ -216,6 +216,7 @@ class Light:
     address: int
     label: str
     serial: int = 0
+    ean: int | None = None
     level: int = 0
     min_level: int = 1
     max_level: int = 254
@@ -413,6 +414,7 @@ class Device:
     address: int
     label: str
     serial: int = 0
+    ean: int | None = None
     instances: list[Instance] = field(default_factory=list)
 
 
@@ -497,6 +499,8 @@ class World:
     # many seconds after started_at (process/sim start).
     startup_delay_s: float = 0.0
     started_at: float | None = None
+    # CLI -t: delay command replies to approximate live controller RTT.
+    simulate_response_latency: bool = False
 
     def is_startup_complete(self) -> bool:
         """Effective startup flag for QUERY_CONTROLLER_STARTUP_COMPLETE.
@@ -1069,6 +1073,7 @@ def load_world(path: str | Path) -> World:
             address=addr,
             label=str(item.get("label", f"Light {addr}")),
             serial=_as_int(item.get("serial")),
+            ean=_as_int(item["ean"]) if item.get("ean") is not None else None,
             level=_as_int(item.get("level")),
             min_level=_as_int(item.get("min_level"), 1),
             max_level=_as_int(item.get("max_level"), 254),
@@ -1184,6 +1189,7 @@ def load_world(path: str | Path) -> World:
             address=addr,
             label=str(item.get("label", f"Device {addr}")),
             serial=_as_int(item.get("serial")),
+            ean=_as_int(item["ean"]) if item.get("ean") is not None else None,
             instances=instances,
         )
 

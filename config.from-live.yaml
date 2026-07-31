@@ -19,6 +19,7 @@ lights:
 - address: 0
   label: Kaelen Strip,Phoenix Strip
   serial: 0x14E73F
+  ean: 6971103534966
   level: 0
   min_level: 15
   max_level: 254
@@ -78,6 +79,7 @@ lights:
 - address: 1
   label: Kaelen Strip,Phoenix Strip
   serial: 0x14E73F
+  ean: 6971103534966
   level: 0
   min_level: 15
   max_level: 254
@@ -137,6 +139,7 @@ lights:
 - address: 2
   label: Kaelen Table N
   serial: 0x20124071CF376
+  ean: 769894696187
   level: 0
   min_level: 10
   max_level: 254
@@ -171,6 +174,7 @@ lights:
 - address: 3
   label: Kaelen Table S
   serial: 0x2012407181497
+  ean: 769894696187
   level: 0
   min_level: 10
   max_level: 254
@@ -205,6 +209,7 @@ lights:
 - address: 4
   label: Kaelen Table C
   serial: 0x20124071D0F92
+  ean: 769894696187
   level: 0
   min_level: 10
   max_level: 254
@@ -239,6 +244,7 @@ lights:
 - address: 5
   label: Kaelen Oven
   serial: 0x4432AF5BFFFFFF34
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -298,6 +304,7 @@ lights:
 - address: 6
   label: Kaelen Cooktop
   serial: 0xD8712617FFFFFF17
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -357,6 +364,7 @@ lights:
 - address: 7
   label: Kaelen Window
   serial: 0x6D475152FFFFFF50
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -416,6 +424,7 @@ lights:
 - address: 8
   label: Kaelen Sink
   serial: 0x76CAC42FFFFFFF02
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -475,6 +484,7 @@ lights:
 - address: 9
   label: Kaelen Tea
   serial: 0xFD92227DFFFFFF25
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -534,6 +544,7 @@ lights:
 - address: 10
   label: Lyra NE
   serial: 0x53A2E216FFFFFF9D
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -593,6 +604,7 @@ lights:
 - address: 11
   label: Lyra SE
   serial: 0x23F69579FFFFFF4C
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -652,6 +664,7 @@ lights:
 - address: 12
   label: Lyra NC
   serial: 0xEE732965FFFFFF80
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -711,6 +724,7 @@ lights:
 - address: 13
   label: Lyra SC
   serial: 0x46F3A062FFFFFFAA
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -770,6 +784,7 @@ lights:
 - address: 14
   label: Lyra NW
   serial: 0x49CBCB78FFFFFFB5
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -829,6 +844,7 @@ lights:
 - address: 15
   label: Lyra SW
   serial: 0xF5512636FFFFFF6F
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -888,6 +904,7 @@ lights:
 - address: 16
   label: Phoenix Oyster
   serial: 0x1
+  ean: 4328719365
   level: 0
   min_level: 135
   max_level: 254
@@ -922,6 +939,7 @@ lights:
 - address: 17
   label: Phoenix Bench
   serial: 0x58EAC410FFFFFFDD
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -982,6 +1000,7 @@ lights:
 - address: 18
   label: Echo Wall S
   serial: 0x40000000010EDE1
+  ean: 6971103530531
   level: 0
   min_level: 10
   max_level: 254
@@ -1041,6 +1060,7 @@ lights:
 - address: 19
   label: Echo Wall N
   serial: 0x30000000010EDE1
+  ean: 6971103530531
   level: 0
   min_level: 10
   max_level: 254
@@ -1100,6 +1120,7 @@ lights:
 - address: 20
   label: Pallas NW
   serial: 0xB81CFB57FFFFFF7B
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -1142,6 +1163,7 @@ lights:
 - address: 21
   label: Pallas NE
   serial: 0xC290AB28FFFFFFB2
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -1184,6 +1206,7 @@ lights:
 - address: 22
   label: Pallas SW
   serial: 0x31549D0AFFFFFF27
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -1226,6 +1249,7 @@ lights:
 - address: 23
   label: Pallas SE
   serial: 0xE58DB611FFFFFFC0
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -1268,6 +1292,7 @@ lights:
 - address: 24
   label: Annex,Echo,,Powder
   serial: 0x14E681
+  ean: 6971103534966
   level: 0
   min_level: 20
   max_level: 254
@@ -1301,6 +1326,7 @@ lights:
 - address: 25
   label: Annex,Echo,,Powder
   serial: 0x14E681
+  ean: 6971103534966
   level: 0
   min_level: 20
   max_level: 254
@@ -1334,6 +1360,7 @@ lights:
 - address: 26
   label: Annex,Echo,,Powder
   serial: 0x14E681
+  ean: 6971103534966
   level: 0
   min_level: 20
   max_level: 254
@@ -1366,6 +1393,7 @@ lights:
 - address: 27
   label: Annex,Echo,,Powder
   serial: 0x14E681
+  ean: 6971103534966
   level: 0
   min_level: 20
   max_level: 254
@@ -1398,6 +1426,7 @@ lights:
 - address: 28
   label: Stair Steps
   serial: 0x14E6EE
+  ean: 6971103534966
   level: 0
   min_level: 1
   max_level: 254
@@ -1457,6 +1486,7 @@ lights:
 - address: 29
   label: Stair Wall
   serial: 0x20000000010EDE1
+  ean: 6971103530531
   level: 0
   min_level: 10
   max_level: 254
@@ -1516,6 +1546,7 @@ lights:
 - address: 30
   label: Orion Purple NW
   serial: 0xA949C826FFFFFFD0
+  ean: 6974487500039
   level: 254
   min_level: 111
   max_level: 254
@@ -1575,6 +1606,7 @@ lights:
 - address: 31
   label: Orion Purple NE
   serial: 0x5542E566FFFFFF29
+  ean: 6974487500039
   level: 254
   min_level: 111
   max_level: 254
@@ -1634,6 +1666,7 @@ lights:
 - address: 32
   label: Orion Purple SW
   serial: 0xBF1290EFFFFFF26
+  ean: 6974487500039
   level: 254
   min_level: 111
   max_level: 254
@@ -1693,6 +1726,7 @@ lights:
 - address: 33
   label: Orion Purple SE
   serial: 0x9EA2634CFFFFFF84
+  ean: 6974487500039
   level: 254
   min_level: 111
   max_level: 254
@@ -1752,6 +1786,7 @@ lights:
 - address: 34
   label: Orion NW
   serial: 0x3AC84D5BFFFFFFDF
+  ean: 6974487500039
   level: 254
   min_level: 111
   max_level: 254
@@ -1811,6 +1846,7 @@ lights:
 - address: 35
   label: Orion NE
   serial: 0x94EC3B65FFFFFF84
+  ean: 6974487500039
   level: 254
   min_level: 111
   max_level: 254
@@ -1870,6 +1906,7 @@ lights:
 - address: 36
   label: Orion SW
   serial: 0x47778F0FFFFFFF6A
+  ean: 6974487500039
   level: 254
   min_level: 111
   max_level: 254
@@ -1929,6 +1966,7 @@ lights:
 - address: 37
   label: Orion SE
   serial: 0x11FF714BFFFFFFD4
+  ean: 6974487500039
   level: 254
   min_level: 111
   max_level: 254
@@ -1988,6 +2026,7 @@ lights:
 - address: 38
   label: Nike Panels
   serial: 0x180040
+  ean: 6971103532627
   level: 0
   min_level: 254
   max_level: 254
@@ -2020,6 +2059,7 @@ lights:
 - address: 39
   label: Nike 41T
   serial: 0x14E629
+  ean: 6971103534966
   level: 0
   min_level: 1
   max_level: 254
@@ -2053,6 +2093,7 @@ lights:
 - address: 40
   label: Nike 41T
   serial: 0x14E629
+  ean: 6971103534966
   level: 0
   min_level: 1
   max_level: 254
@@ -2085,6 +2126,7 @@ lights:
 - address: 41
   label: Nike 41T
   serial: 0x14E629
+  ean: 6971103534966
   level: 0
   min_level: 1
   max_level: 254
@@ -2118,6 +2160,7 @@ lights:
 - address: 42
   label: Nike 41T
   serial: 0x14E629
+  ean: 6971103534966
   level: 0
   min_level: 1
   max_level: 254
@@ -2150,6 +2193,7 @@ lights:
 - address: 45
   label: Porch
   serial: 0x64D3A001FFFFFF0B
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -2192,6 +2236,7 @@ lights:
 - address: 46
   label: Wynn,Upstars,Boreas,Echo
   serial: 0x101670
+  ean: 6971103534966
   level: 0
   min_level: 10
   max_level: 254
@@ -2224,6 +2269,7 @@ lights:
 - address: 47
   label: Wynn,Upstars,Boreas,Echo
   serial: 0x101670
+  ean: 6971103534966
   level: 0
   min_level: 10
   max_level: 254
@@ -2257,6 +2303,7 @@ lights:
 - address: 48
   label: Wynn,Upstars,Boreas,Echo
   serial: 0x101670
+  ean: 6971103534966
   level: 0
   min_level: 10
   max_level: 254
@@ -2289,6 +2336,7 @@ lights:
 - address: 49
   label: Wynn,Upstars,Boreas,Echo
   serial: 0x101670
+  ean: 6971103534966
   level: 0
   min_level: 10
   max_level: 254
@@ -2321,6 +2369,7 @@ lights:
 - address: 50
   label: Hermes NW
   serial: 0xE4979E0AFFFFFF58
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -2363,6 +2412,7 @@ lights:
 - address: 51
   label: Hermes NE
   serial: 0xCEBBFE2FFFFFFF8D
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -2405,6 +2455,7 @@ lights:
 - address: 52
   label: Hermes SW
   serial: 0x39959951FFFFFFD1
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -2447,6 +2498,7 @@ lights:
 - address: 53
   label: Hermes SE
   serial: 0x8C391644FFFFFF0A
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -2489,6 +2541,7 @@ lights:
 - address: 54
   label: Athena NW
   serial: 0x8B69C807FFFFFF29
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -2548,6 +2601,7 @@ lights:
 - address: 55
   label: Athena NE
   serial: 0x362F313EFFFFFFA1
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -2607,6 +2661,7 @@ lights:
 - address: 56
   label: Athena SW
   serial: 0x3CFB0165FFFFFF6A
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -2666,6 +2721,7 @@ lights:
 - address: 57
   label: Athena SE
   serial: 0x760C3C46FFFFFFF7
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -2725,6 +2781,7 @@ lights:
 - address: 58
   label: Artemis NE
   serial: 0xFED49913FFFFFF55
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -2767,6 +2824,7 @@ lights:
 - address: 59
   label: Artemis SE
   serial: 0x58A37266FFFFFFCF
+  ean: 6974487500039
   level: 0
   min_level: 111
   max_level: 254
@@ -2809,6 +2867,7 @@ lights:
 - address: 60
   label: Artemis NW
   serial: 0x20124071CAD30
+  ean: 769894696187
   level: 0
   min_level: 1
   max_level: 254
@@ -2842,6 +2901,7 @@ lights:
 - address: 61
   label: Artemis SW
   serial: 0x20124071D189B
+  ean: 769894696187
   level: 0
   min_level: 1
   max_level: 254
@@ -2875,6 +2935,7 @@ lights:
 - address: 62
   label: Laundry
   serial: 0x520060
+  ean: 6973969160082
   level: 0
   min_level: 85
   max_level: 254
@@ -2907,6 +2968,7 @@ lights:
 - address: 63
   label: Echo Towel
   serial: 0x13697C
+  ean: 6971103532627
   level: 0
   min_level: 254
   max_level: 254
@@ -2991,6 +3053,7 @@ devices:
 - address: 1
   label: Kaelen
   serial: 0x13E194
+  ean: 6971103534874
   instances:
   - number: 0
     type: push_button
@@ -3030,6 +3093,7 @@ devices:
 - address: 2
   label: Lyra
   serial: 0x13E1BF
+  ean: 6971103534874
   instances:
   - number: 0
     type: push_button
@@ -3069,6 +3133,7 @@ devices:
 - address: 3
   label: Echo Front
   serial: 0x144961
+  ean: 6971103534874
   instances:
   - number: 0
     type: push_button
@@ -3108,6 +3173,7 @@ devices:
 - address: 4
   label: Orion
   serial: 0x13E1CC
+  ean: 6971103534874
   instances:
   - number: 0
     type: push_button
@@ -3147,6 +3213,7 @@ devices:
 - address: 5
   label: Athena
   serial: 0x15542D
+  ean: 6971103532993
   instances:
   - number: 0
     type: push_button
@@ -3186,6 +3253,7 @@ devices:
 - address: 6
   label: Echo Stairs
   serial: 0x13E1AB
+  ean: 6971103534874
   instances:
   - number: 0
     type: push_button
@@ -3225,6 +3293,7 @@ devices:
 - address: 7
   label: Nike Door
   serial: 0x13E19F
+  ean: 6971103534874
   instances:
   - number: 0
     type: push_button
@@ -3264,6 +3333,7 @@ devices:
 - address: 10
   label: Porch Sensor
   serial: 0x13B99E
+  ean: 9336462199091
   instances:
   - number: 0
     type: occupancy_sensor
@@ -3283,6 +3353,7 @@ devices:
 - address: 11
   label: Echo Sensor
   serial: 0x146460
+  ean: 9336462199091
   instances:
   - number: 0
     type: occupancy_sensor
@@ -3302,6 +3373,7 @@ devices:
 - address: 12
   label: Annex Sensor
   serial: 0x135C21
+  ean: 9336462199091
   instances:
   - number: 0
     type: occupancy_sensor
@@ -3321,6 +3393,7 @@ devices:
 - address: 20
   label: Echo
   serial: 0x12B4D4
+  ean: 6971103535048
   instances:
   - number: 0
     type: push_button
@@ -3345,6 +3418,7 @@ devices:
 - address: 26
   label: Powder
   serial: 0x15A30E
+  ean: 9336462191897
   instances:
   - number: 0
     type: push_button
@@ -3354,6 +3428,7 @@ devices:
 - address: 28
   label: Phoenix 1
   serial: 0x100AB0
+  ean: 9336462191897
   instances:
   - number: 0
     type: push_button
@@ -3363,6 +3438,7 @@ devices:
 - address: 29
   label: Phoenix 2
   serial: 0x89E1C
+  ean: 9336462191897
   instances:
   - number: 0
     type: push_button
@@ -3372,6 +3448,7 @@ devices:
 - address: 30
   label: Nike Rear 1
   serial: 0x1124E5
+  ean: 9336462191897
   instances:
   - number: 0
     type: push_button
@@ -3381,6 +3458,7 @@ devices:
 - address: 31
   label: Nike Rear 2
   serial: 0x100BA3
+  ean: 9336462191897
   instances:
   - number: 0
     type: push_button
@@ -3390,6 +3468,7 @@ devices:
 - address: 32
   label: Upstairs 1
   serial: 0x100A40
+  ean: 9336462191897
   instances:
   - number: 0
     type: push_button
@@ -3399,6 +3478,7 @@ devices:
 - address: 33
   label: Upstairs 2
   serial: 0x112514
+  ean: 9336462191897
   instances:
   - number: 0
     type: push_button
@@ -3408,6 +3488,7 @@ devices:
 - address: 34
   label: Boreas
   serial: 0x89CF1
+  ean: 9336462191897
   instances:
   - number: 0
     type: push_button
@@ -3417,6 +3498,7 @@ devices:
 - address: 36
   label: Laundry
   serial: 0x112888
+  ean: 9336462191897
   instances:
   - number: 0
     type: push_button
@@ -3426,6 +3508,7 @@ devices:
 - address: 38
   label: Wynn 1
   serial: 0x11241C
+  ean: 9336462191897
   instances:
   - number: 0
     type: push_button
@@ -3435,6 +3518,7 @@ devices:
 - address: 39
   label: Wynn 2
   serial: 0x89BD7
+  ean: 9336462191897
   instances:
   - number: 0
     type: push_button
@@ -3444,6 +3528,7 @@ devices:
 - address: 40
   label: Pallas
   serial: 0x101E4
+  ean: 9010342010224
   instances:
   - number: 0
     type: push_button
@@ -3468,6 +3553,7 @@ devices:
 - address: 41
   label: Hermes Simon
   serial: 0x1021A
+  ean: 9010342010224
   instances:
   - number: 0
     type: push_button
@@ -3492,6 +3578,7 @@ devices:
 - address: 42
   label: Hermes Athena
   serial: 0x10210
+  ean: 9010342010224
   instances:
   - number: 0
     type: push_button
@@ -3516,6 +3603,7 @@ devices:
 - address: 43
   label: Artemis
   serial: 0x10211
+  ean: 9010342010224
   instances:
   - number: 0
     type: push_button
@@ -3540,6 +3628,7 @@ devices:
 - address: 44
   label: Hermes
   serial: 0x180000400D
+  ean: 9010342010224
   instances:
   - number: 0
     type: push_button
@@ -3596,3 +3685,47 @@ system_variables:
 - id: 7
   name: Nike Rear Closing
   value: -1
+
+
+# API response times (msec):
+# +---------------------------------------+-------+-------+-------+----+---------+
+# | API                                   | min   | avg   | max   | n  | total s |
+# +---------------------------------------+-------+-------+-------+----+---------+
+# | DALI_QUERY_CG_TYPE                    |   9.7 |  11.1 |  12.9 | 62 |     0.7 |
+# | DALI_QUERY_CONTROL_GEAR_STATUS        |   9.2 |  10.9 |  12.7 | 62 |     0.7 |
+# | DALI_QUERY_LAST_SCENE                 |   9.8 |  10.9 |  12.2 | 62 |     0.7 |
+# | DALI_QUERY_LAST_SCENE_IS_CURRENT      |   9.5 |  11.0 |  12.3 | 62 |     0.7 |
+# | DALI_QUERY_LEVEL                      |   6.6 |  10.9 |  12.8 | 70 |     0.8 |
+# | DALI_QUERY_MAX_LEVEL                  |   9.1 |  11.0 |  12.1 | 62 |     0.7 |
+# | DALI_QUERY_MIN_LEVEL                  |   9.1 |  11.0 |  12.9 | 62 |     0.7 |
+# | QUERY_COLOUR_SCENE_0_7_DATA_FOR_ADDR  |   8.9 |  11.1 |  13.0 | 62 |     0.7 |
+# | QUERY_COLOUR_SCENE_8_11_DATA_FOR_ADDR |   9.8 |  10.7 |  12.1 | 41 |     0.5 |
+# | QUERY_CONTROLLER_LABEL                |  12.0 |  12.0 |  12.0 |  1 |     0.1 |
+# | QUERY_CONTROLLER_STARTUP_COMPLETE     |   4.5 |   8.2 |  12.0 |  2 |     0.1 |
+# | QUERY_CONTROLLER_VERSION_NUMBER       |   9.9 |   9.9 |   9.9 |  1 |     0.1 |
+# | QUERY_CONTROL_GEAR_DALI_ADDRESSES     |  11.7 |  11.7 |  11.7 |  1 |     0.1 |
+# | QUERY_CURRENT_PROFILE_NUMBER          |  10.0 |  10.0 |  10.0 |  1 |     0.1 |
+# | QUERY_DALI_ADDRESSES_WITH_INSTANCES   |  11.7 |  11.7 |  11.7 |  1 |     0.1 |
+# | QUERY_DALI_COLOUR                     |   7.5 |  10.4 |  12.0 | 41 |     0.5 |
+# | QUERY_DALI_COLOUR_FEATURES            |  13.9 |  56.2 |  96.0 | 41 |     2.4 |
+# | QUERY_DALI_COLOUR_TEMP_LIMITS         |  14.0 |  56.2 |  96.7 | 41 |     2.4 |
+# | QUERY_DALI_DEVICE_LABEL               |  11.5 |  13.6 |  16.1 | 89 |     1.3 |
+# | QUERY_DALI_EAN                        |   8.7 |  11.2 |  15.2 | 89 |     1.0 |
+# | QUERY_DALI_INSTANCE_LABEL             |  70.6 | 122.2 | 178.0 | 90 |    11.0 |
+# | QUERY_DALI_SERIAL                     |   9.6 |  10.9 |  13.0 | 89 |     1.0 |
+# | QUERY_GROUP_LABEL                     |  11.7 |  17.8 |  22.0 |  8 |     0.2 |
+# | QUERY_GROUP_MEMBERSHIP_BY_ADDRESS     |   8.9 |  10.9 |  12.3 | 62 |     0.7 |
+# | QUERY_GROUP_NUMBERS                   |  27.8 |  27.8 |  27.8 |  1 |     0.1 |
+# | QUERY_INSTANCES_BY_ADDRESS            |  11.9 |  13.6 |  18.0 | 27 |     0.4 |
+# | QUERY_IS_DALI_READY                   |  10.0 |  11.0 |  12.0 |  2 |     0.1 |
+# | QUERY_OCCUPANCY_INSTANCE_TIMERS       |   9.9 |  11.1 |  11.8 |  3 |     0.1 |
+# | QUERY_PROFILE_INFORMATION             |  12.0 |  12.0 |  12.0 |  1 |     0.1 |
+# | QUERY_PROFILE_LABEL                   |  11.8 |  11.9 |  11.9 |  3 |     0.1 |
+# | QUERY_PROFILE_NUMBERS                 |  18.1 |  18.1 |  18.1 |  1 |     0.1 |
+# | QUERY_SCENE_LABEL_FOR_GROUP           |  11.9 |  20.1 |  26.8 | 15 |     0.4 |
+# | QUERY_SCENE_LEVELS_BY_ADDRESS         |   9.5 |  10.8 |  12.5 | 62 |     0.7 |
+# | QUERY_SCENE_NUMBERS_FOR_GROUP         | 108.0 | 109.8 | 112.3 |  8 |     0.9 |
+# | QUERY_SYSTEM_VARIABLE                 |   9.8 |  10.9 |  12.1 |  8 |     0.1 |
+# | QUERY_SYSTEM_VARIABLE_NAME            |   9.7 |  11.0 |  12.1 | 18 |     0.2 |
+# | QUERY_TPI_EVENT_EMIT_STATE            |  11.9 |  11.9 |  11.9 |  1 |     0.1 |
+# +---------------------------------------+-------+-------+-------+----+---------+
