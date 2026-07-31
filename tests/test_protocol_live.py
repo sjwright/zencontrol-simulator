@@ -144,7 +144,7 @@ async def test_discover_control_gear(live_protocol):
     p, c = live_protocol.protocol, live_protocol.controller
     gears = await p.query_control_gear_dali_addresses(c)
     numbers = sorted(a.number for a in gears)
-    assert numbers == list(range(12))  # ECG 0–11
+    assert numbers == list(range(14))  # ECG 0–13 (incl. Living Fan / Theatre Blind)
 
 
 @pytest.mark.asyncio

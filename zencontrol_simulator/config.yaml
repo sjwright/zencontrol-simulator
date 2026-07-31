@@ -29,6 +29,7 @@ lights:
   - address: 0
     label: "Living Room Ceiling"
     serial: 0x0100000000000001
+    ean: 6974487500039
     level: 180
     min_level: 1
     max_level: 254
@@ -70,6 +71,7 @@ lights:
   - address: 1
     label: "Kitchen Pendants"
     serial: 0x0100000000000002
+    ean: 769894696187
     level: 0
     min_level: 1
     max_level: 254
@@ -165,6 +167,7 @@ lights:
   - address: 4
     label: "Hallway North"
     serial: 0x0100000000000005
+    ean: 769894696187
     level: 100
     min_level: 1
     max_level: 254
@@ -184,6 +187,7 @@ lights:
   - address: 5
     label: "Hallway Mid"
     serial: 0x0100000000000006
+    ean: 769894696187
     level: 100
     min_level: 1
     max_level: 254
@@ -203,6 +207,7 @@ lights:
   - address: 6
     label: "Hallway South"
     serial: 0x0100000000000007
+    ean: 769894696187
     level: 100
     min_level: 1
     max_level: 254
@@ -223,6 +228,7 @@ lights:
   - address: 7
     label: "Office Desk"
     serial: 0x0100000000000008
+    ean: 6974487500039
     level: 200
     min_level: 1
     max_level: 254
@@ -342,6 +348,7 @@ lights:
   - address: 10
     label: "Garage Panels"
     serial: 0x010000000000000B
+    ean: 6971103532627
     level: 0
     min_level: 0
     max_level: 254
@@ -361,6 +368,7 @@ lights:
   - address: 11
     label: "Ensuite Towel"
     serial: 0x010000000000000C
+    ean: 6971103532627
     level: 0
     min_level: 0
     max_level: 254
@@ -374,6 +382,47 @@ lights:
       primary_count: 0
       rgbwaf_channels: 0
     groups: [5]
+    scene_levels: [null, null, null, null, null, null, null, null, null, null, null, null]
+    status: 0x00
+
+  # Fan / blind demo ECGs (label suffix classifies in zencontrol-python)
+  - address: 12
+    label: "Living Fan"
+    serial: 0x010000000000000D
+    ean: 6971103532627
+    level: 0
+    min_level: 0
+    max_level: 254
+    last_scene: 0
+    last_scene_current: false
+    cg_types: [7]
+    colour: null
+    colour_features:
+      supports_xy: false
+      supports_tunable: false
+      primary_count: 0
+      rgbwaf_channels: 0
+    groups: []
+    scene_levels: [null, null, null, null, null, null, null, null, null, null, null, null]
+    status: 0x00
+
+  - address: 13
+    label: "Theatre Blind"
+    serial: 0x010000000000000E
+    ean: 6971103532627
+    level: 254
+    min_level: 0
+    max_level: 254
+    last_scene: 0
+    last_scene_current: false
+    cg_types: [7]
+    colour: null
+    colour_features:
+      supports_xy: false
+      supports_tunable: false
+      primary_count: 0
+      rgbwaf_channels: 0
+    groups: []
     scene_levels: [null, null, null, null, null, null, null, null, null, null, null, null]
     status: 0x00
 
@@ -447,6 +496,7 @@ devices:
   - address: 1
     label: "Kitchen Switch"
     serial: 0x0200000000000002
+    ean: 9336462191897
     instances:
       - number: 0
         type: push_button
@@ -479,6 +529,7 @@ devices:
   - address: 3
     label: "Pantry Switch"
     serial: 0x0200000000000004
+    ean: 9336462191897
     instances:
       - number: 0
         type: push_button
@@ -512,6 +563,7 @@ devices:
   - address: 5
     label: "Lounge 6-Button"
     serial: 0x0200000000000006
+    ean: 6971103534874
     instances:
       - number: 0
         type: push_button
@@ -538,6 +590,7 @@ devices:
   - address: 6
     label: "Garage 6-Button"
     serial: 0x0200000000000007
+    ean: 6971103534874
     instances:
       - number: 0
         type: push_button
@@ -565,6 +618,7 @@ devices:
   - address: 7
     label: "Master Bedhead"
     serial: 0x0200000000000008
+    ean: 9010342010224
     instances:
       - number: 0
         type: push_button
@@ -582,6 +636,7 @@ devices:
   - address: 8
     label: "Guest Bedhead"
     serial: 0x0200000000000009
+    ean: 9010342010224
     instances:
       - number: 0
         type: push_button
@@ -600,6 +655,7 @@ devices:
   - address: 9
     label: "Echo Pad"
     serial: 0x020000000000000C
+    ean: 6971103535048
     instances:
       - number: 0
         type: push_button
@@ -617,6 +673,7 @@ devices:
   - address: 12
     label: "Annex Pad"
     serial: 0x020000000000000D
+    ean: 6971103535048
     instances:
       - number: 0
         type: push_button
@@ -635,6 +692,7 @@ devices:
   - address: 10
     label: "Porch Sensor"
     serial: 0x020000000000000A
+    ean: 9336462199091
     instances:
       - number: 0
         type: occupancy_sensor
@@ -651,6 +709,7 @@ devices:
   - address: 11
     label: "Entrance Sensor"
     serial: 0x020000000000000B
+    ean: 9336462199091
     instances:
       - number: 0
         type: occupancy_sensor
@@ -683,7 +742,7 @@ profiles:
       behaviour: 0  # enabled, scheduled priority
     - number: 2
       label: "Night"
-      behaviour: 2  # enabled, medium priority (bits 1–2 = 1)
+      behaviour: 2  # enabled, medium priority (bits 1-2 = 1)
     - number: 3
       label: "Away"
       behaviour: 1  # disabled flag

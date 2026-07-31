@@ -385,6 +385,47 @@ lights:
     scene_levels: [null, null, null, null, null, null, null, null, null, null, null, null]
     status: 0x00
 
+  # Fan / blind demo ECGs (label suffix classifies in zencontrol-python)
+  - address: 12
+    label: "Living Fan"
+    serial: 0x010000000000000D
+    ean: 6971103532627
+    level: 0
+    min_level: 0
+    max_level: 254
+    last_scene: 0
+    last_scene_current: false
+    cg_types: [7]
+    colour: null
+    colour_features:
+      supports_xy: false
+      supports_tunable: false
+      primary_count: 0
+      rgbwaf_channels: 0
+    groups: []
+    scene_levels: [null, null, null, null, null, null, null, null, null, null, null, null]
+    status: 0x00
+
+  - address: 13
+    label: "Theatre Blind"
+    serial: 0x010000000000000E
+    ean: 6971103532627
+    level: 254
+    min_level: 0
+    max_level: 254
+    last_scene: 0
+    last_scene_current: false
+    cg_types: [7]
+    colour: null
+    colour_features:
+      supports_xy: false
+      supports_tunable: false
+      primary_count: 0
+      rgbwaf_channels: 0
+    groups: []
+    scene_levels: [null, null, null, null, null, null, null, null, null, null, null, null]
+    status: 0x00
+
 groups:
   - number: 0
     label: "Living Areas"
@@ -701,7 +742,7 @@ profiles:
       behaviour: 0  # enabled, scheduled priority
     - number: 2
       label: "Night"
-      behaviour: 2  # enabled, medium priority (bits 1–2 = 1)
+      behaviour: 2  # enabled, medium priority (bits 1-2 = 1)
     - number: 3
       label: "Away"
       behaviour: 1  # disabled flag

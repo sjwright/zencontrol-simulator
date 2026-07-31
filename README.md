@@ -78,7 +78,7 @@ controller RTT: **10 ms** for most commands, **20 ms** for `QUERY_GROUP_LABE
 [`config.yaml`](config.yaml) includes:
 
 - Tunable-white lights (ECG 0, 7), dimmers (ECG 1, 4–6), RGB (ECG 2, 8), XY (ECG 3, 9),
-  switching gear cg-type 7 (ECG 10–11)
+  switching gear cg-type 7 (ECG 10–11), demo fan/blind labels (ECG 12–13: `Living Fan` / `Theatre Blind`)
 - Hallway dimmers ECG 4–6 with overlapping groups (4+5 in group 2, 5+6 in group 3)
 - Colour scenes 0–1 and 8–9 on the living-room tunable-white light
 - Groups with labelled scenes (0–3) and without (4–5), matching live dumps
