@@ -35,10 +35,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to YAML config (default: ./config.yaml, else package sample)",
     )
     parser.add_argument(
+        "-b",
         "--host",
         help="Override bind host from config",
     )
     parser.add_argument(
+        "-p",
         "--port",
         type=int,
         help="Override bind port from config (default 5108)",

@@ -1233,6 +1233,17 @@ def test_cli_simulate_timing_flag():
     assert build_parser().parse_args([]).simulate_timing is False
 
 
+def test_cli_host_port_flags():
+    from zencontrol_simulator.__main__ import build_parser
+
+    args = build_parser().parse_args(["-b", "127.0.0.1", "-p", "5109"])
+    assert args.host == "127.0.0.1"
+    assert args.port == 5109
+    long_args = build_parser().parse_args(["--host", "0.0.0.0", "--port", "5108"])
+    assert long_args.host == "0.0.0.0"
+    assert long_args.port == 5108
+
+
 def test_response_latency_table():
     from zencontrol_simulator.handlers import (
         CMD,

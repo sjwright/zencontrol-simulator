@@ -1,14 +1,15 @@
 # Zencontrol TPI Advanced Simulator
 
-This is a substantially AI-coded UDP/TCP simulator of a Zencontrol controller,
+A majority AI-coded UDP/TCP simulator of a Zencontrol controller,
 suitable for developing and testing TPI Advanced protocol implementations.
 
-Although it is substantially AI-coded, it has been tested against the
+It has been tested against (and integrates into its own test suite) the mostly
 human-coded [`zencontrol-python`](https://github.com/sjwright/zencontrol-python)
-protocol implementation, and a test suite which is known to work against physical
-hardware.
+protocol implementation, and has been extensively benchmarked against real
+physical hardware.
 
-If you want the simulator to mimic your live environment, you can run zencontrol-dump against a real controller to generate a config file which you can load into the simulator.
+To replicate your own environment in this simulator, `zencontrol-dump` can connect
+to a real zencontrol controller and generate a config file which the simulator can load.
 
 ## Quick start
 
@@ -16,31 +17,29 @@ Requires **Python 3.14+**.
 
 ```bash
 cd zencontrol-simulator
-./setup-venv.sh                      # creates .venv, installs deps + zencontrol-python
+./setup-venv.sh                      # creates .venv, installs dependencies
 source .venv/bin/activate
 
-zencontrol-simulator                 # uses ./config.yaml
-zencontrol-simulator -v              # debug logging
-zencontrol-simulator -i              # interactive event injection
-zencontrol-simulator -s 2            # simulate startup delay in seconds
-zencontrol-simulator -t              # simulate live controller reply latency
-
-# Snapshot a live controller into a simulator YAML
-zencontrol-dump -ip 1.2.3.4
-zencontrol-dump -ip 1.2.3.4 -port 5108 -out config2.yaml
+zencontrol-simulator                 # default settings, loads ./config.yaml
+zencontrol-simulator -c config2.yaml --host 127.0.0.1 --port 5109 -v -i -s 10 -t
 ```
 
-`zencontrol-dump` requires `zencontrol-python` (installed by `setup-venv.sh`). `-ip` is required; `-port` defaults to `5108`; `-out` defaults to `config-{controller-label}.yaml`.
+### CLI flags
 
-Point a client at:
+| Short | Long | Description |
+| ----- | ---- | ----------- |
+| `-c` | `--config` | Path to YAML config (default: `./config.yaml`, else packaged sample) |
+| `-b` | `--host` | Override bind host from config |
+| `-p` | `--port` | Override bind port from config |
+| `-i` | `--interactive` | Read stdin commands to inject events |
+| `-s` | `--startup-delay` | Seconds before `QUERY_CONTROLLER_STARTUP_COMPLETE` reports ready |
+| `-t` | `--simulate-timing` | Delay replies to approximate live controller RTT |
+| `-v` | `--verbose` | Debug logging |
+| `-h` | `--help` | Show help |
 
-
-| Field | Sample config value           |
-| ----- | ----------------------------- |
-| Host  | your machine IP / `127.0.0.1` |
-| Port  | `5108`                        |
-| MAC   | `02:00:00:00:00:01`           |
-
+Bind host/port, announced MAC address, and other world properties live in the config YAML.
+The default `config.yaml` uses a default binding of `0.0.0.0:5108` and MAC `02:00:00:00:00:01`.
+Flags `--host` / `--port` override those values for that run.
 
 ### Interactive inject commands (`-i`)
 
@@ -61,34 +60,33 @@ stats
 quit
 ```
 
-Note: PDF instance `OCCUPANCY_EVENT` is motion-only (no “not detected”); payload
-byte 2 is unused (`0x01`). `zencontrol-python` treats any `IS_OCCUPIED` as motion
-and clears occupied via the hold timer. Occupancy timer queries return **seconds
-since last motion** (wall-clock), matching hardware.
+### Simulate timing (`-t`)
 
-With `-t` / `--simulate-timing`, UDP/TCP replies are delayed to approximate live
+With `-t` / `--simulate-timing`, resposne packets are delayed to approximate live
 controller RTT: **10 ms** for most commands, **20 ms** for `QUERY_GROUP_LABEL` /
 `QUERY_SCENE_LABEL_FOR_GROUP` / `QUERY_CONTROLLER_LABEL`, **30 ms** for
 `QUERY_GROUP_NUMBERS`, **50 ms** for `QUERY_DALI_COLOUR_FEATURES` /
 `QUERY_DALI_COLOUR_TEMP_LIMITS`, and **100 ms** for `QUERY_DALI_INSTANCE_LABEL` /
 `QUERY_SCENE_NUMBERS_FOR_GROUP`.
 
-## Sample world
+### Dump tool
 
-[`config.yaml`](config.yaml) includes:
+```bash
+# Snapshot a live controller into a simulator YAML
+zencontrol-dump -ip 1.2.3.4
+zencontrol-dump -ip 1.2.3.4 -port 5108 -out config2.yaml -mac 02:00:00:00:00:01 -v
+```
 
-- Tunable-white lights (ECG 0, 7), dimmers (ECG 1, 4–6), RGB (ECG 2, 8), XY (ECG 3, 9),
-  switching gear cg-type 7 (ECG 10–11), demo fan/blind labels (ECG 12–13: `Living Fan` / `Theatre Blind`)
-- Hallway dimmers ECG 4–6 with overlapping groups (4+5 in group 2, 5+6 in group 3)
-- Colour scenes 0–1 and 8–9 on the living-room tunable-white light
-- Groups with labelled scenes (0–3) and without (4–5), matching live dumps
-- ECDs covering live shapes: single buttons, 3-button+general sensor, 4-button pads,
-  6-button pads, 6-button+general sensor, occupancy+lux combos, and an absolute-input dial
-- Three profiles and six system variables (switch / lux-sensor / other), with
-  `Demo Lux Sensor` using `simulate: 2500` for a daylight sine curve
+Requires `zencontrol-python` (installed by `setup-venv.sh`).
 
-Config is validated on load (address ranges, missing group refs, colour
-`cg_types` / `rgbwaf_channels` mismatches that would break feature detection).
+| Short | Long | Description |
+| ----- | ---- | ----------- |
+| `-ip` | `--ip` | Controller IP or hostname (**required**) |
+| `-port` | `--port` | Controller TPI port (default: `5108`) |
+| `-out` | `--out` | Output YAML path (default: `config-{controller-label}.yaml`) |
+| `-mac` | `--mac` | MAC written into the dumped world (default: `00:00:00:00:00:00`) |
+| `-v` | `--verbose` | Debug logging |
+| `-h` | `--help` | Show help |
 
 ## Tests
 
@@ -236,7 +234,7 @@ Status legend: **Simulated** = responds with some degree of correctness / simula
 | `0xB6` | QUERY_VIRTUAL_INSTANCES                | No         | Virtual instances are out of scope                        |
 
 Deliberate deviations: broadcast wire **255** only (not **127**); level events
-are `**LEVEL_CHANGE_V2` only**; scene level queries return 16 DALI slots with
+are **LEVEL_CHANGE_V2 only**; scene level queries return 16 DALI slots with
 12–15 as `0xFF`; colour-scene unused slots are `0xFF` × 7.
 
 Where the PDF contradicts itself the simulator picks one reading and records the
