@@ -157,8 +157,8 @@ system_variables: []
     disp = CommandDispatcher(world, EventEmitter(world))
     assert world.fitting_number == "7"
 
-    ctrl = parse_request(_basic(CMD["QUERY_CONTROLLER_FITTING_NUMBER"]))
-    assert disp.handle(ctrl)[3:-1] == b"7"
+    req = parse_request(_basic(CMD["QUERY_CONTROLLER_FITTING_NUMBER"]))
+    assert disp.handle(req)[3:-1] == b"7"
 
     ecg = parse_request(_basic(CMD["QUERY_DALI_FITTING_NUMBER"], address=2))
     assert disp.handle(ecg)[3:-1] == b"7.2"

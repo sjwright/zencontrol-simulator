@@ -1102,9 +1102,9 @@ def test_query_dali_fitting_number():
         assert resp[0] == ResponseType.ANSWER
         assert resp[3:-1] == expected.encode()
 
-    ctrl = parse_request(_basic(CMD["QUERY_CONTROLLER_FITTING_NUMBER"]))
-    assert not isinstance(ctrl, ParseFailure)
-    assert disp.handle(ctrl)[3:-1] == b"1"
+    req = parse_request(_basic(CMD["QUERY_CONTROLLER_FITTING_NUMBER"]))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[3:-1] == b"1"
 
     # ECD 4 instance 2 → 1.104.2
     inst = parse_request(
