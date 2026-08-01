@@ -46,7 +46,7 @@ async def test_zencontrol_python_discovery_and_control():
                 mac=mac,
             )
             ctrl = zen.controllers[0]
-            assert await ctrl.is_controller_ready()
+            assert await zen.commands.query_controller_startup_complete(ctrl)
             await ctrl.interview()
 
             lights = await zen.get_lights()
@@ -141,7 +141,7 @@ async def test_zencontrol_python_discovery_and_control():
             assert world.lights[1].level == 100
 
             # Profile switch
-            assert await ctrl.switch_to_profile(2) is True
+            assert await zen.switch_to_profile(ctrl, 2) is True
             await asyncio.sleep(0.2)
             assert world.current_profile == 2
             assert len(profile_events) >= 1
