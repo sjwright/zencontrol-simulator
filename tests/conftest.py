@@ -88,7 +88,7 @@ async def live_protocol():
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
     protocol = ZenTestClient(unicast=True, listen_ip="127.0.0.1", listen_port=0)
-    controller = protocol.context.controller(
+    controller = protocol.ctx.controller(
         id=1,
         name="sim",
         label="Sim",

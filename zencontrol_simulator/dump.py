@@ -514,7 +514,7 @@ async def _dump(args: argparse.Namespace) -> None:
     from zencontrol.testing import ZenTestClient
 
     async with ZenTestClient(print_traffic=False) as tpi:
-        ctrl = tpi.context.controller(
+        ctrl = tpi.ctx.controller(
             id=1,
             name="dump",
             label="",
