@@ -306,11 +306,11 @@ async def dump_controller(tpi: Any, ctrl: Any) -> dict[str, Any]:
         }
         if colour_temp_limits:
             light["colour_temp_limits"] = {
-                "physical_warmest": int(colour_temp_limits["physical_warmest"]),
-                "physical_coolest": int(colour_temp_limits["physical_coolest"]),
-                "soft_warmest": int(colour_temp_limits["soft_warmest"]),
-                "soft_coolest": int(colour_temp_limits["soft_coolest"]),
-                "step_value": int(colour_temp_limits["step_value"]),
+                "physical_warmest": int(colour_temp_limits.physical_warmest),
+                "physical_coolest": int(colour_temp_limits.physical_coolest),
+                "soft_warmest": int(colour_temp_limits.soft_warmest),
+                "soft_coolest": int(colour_temp_limits.soft_coolest),
+                "step_value": int(colour_temp_limits.step_value),
             }
         if any(c is not None for c in scene_colours):
             light["scene_colours"] = scene_colours

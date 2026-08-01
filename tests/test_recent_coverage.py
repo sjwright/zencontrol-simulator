@@ -114,7 +114,8 @@ async def test_live_group_by_number_hallway(live_protocol):
     live_protocol.world.lights[4].set_level(30)
     live_protocol.world.lights[5].set_level(120)
     info = await p.query_group_by_number(live_protocol.group(2))
-    assert info == (2, True, 120)
+    assert info is not None
+    assert info.number == 2 and info.occupied is True and info.level == 120
 
 
 # ---------------------------------------------------------------------------

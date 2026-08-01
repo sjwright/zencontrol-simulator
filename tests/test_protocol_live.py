@@ -161,7 +161,8 @@ async def test_discover_groups(live_protocol):
     live_protocol.world.lights[0].set_level(10)
     live_protocol.world.lights[1].set_level(77)
     info = await p.query_group_by_number(live_protocol.group(0))
-    assert info == (0, True, 77)
+    assert info is not None
+    assert info.number == 0 and info.occupied is True and info.level == 77
     assert await p.query_group_by_number(live_protocol.group(15)) is None
 
 
@@ -220,7 +221,7 @@ async def test_light_identity_and_features(live_protocol):
 
     limits = await p.query_dali_colour_temp_limits(ecg0)
     assert limits is not None
-    assert limits.get("soft_warmest") == 2700 or limits.get("physical_warmest") == 2700
+    assert limits.soft_warmest == 2700 or limits.physical_warmest == 2700
 
     groups = await p.query_group_membership_by_address(ecg1)
     assert {g.number for g in groups} == {0, 1}
