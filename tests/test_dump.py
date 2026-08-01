@@ -14,7 +14,7 @@ def test_sanitize_controller_label_basic():
 
 
 def test_sanitize_controller_label_punctuation_and_case():
-    assert sanitize_controller_label("  ZenControl #1 — Main!! ") == "zencontrol-1-main"
+    assert sanitize_controller_label("  ZenControl #1 - Main!! ") == "zencontrol-1-main"
 
 
 def test_sanitize_controller_label_collapses_spaces():

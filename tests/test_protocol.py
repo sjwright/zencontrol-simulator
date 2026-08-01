@@ -328,7 +328,7 @@ def test_xy_colour_roundtrip(dispatcher, monkeypatch):
         "emit",
         lambda t, c, p=b"", instance=None: emitted.append(int(c)) or True,
     )
-    # XY 0x10, x=12345, y=23456 — arc 0xFF = colour-only (level unchanged)
+    # XY 0x10, x=12345, y=23456 - arc 0xFF = colour-only (level unchanged)
     colour = bytes([0x10, 0x30, 0x39, 0x5B, 0xA0])
     packet = bytearray([0x04, 1, CMD["DALI_COLOUR"], 3, 0xFF])
     packet.extend(colour)
@@ -360,7 +360,7 @@ def test_startup_no_answer_and_dali_always_ready(dispatcher):
     assert not isinstance(req, ParseFailure)
     assert disp.handle(req)[0] == ResponseType.NO_ANSWER
 
-    world.dali_ready = False  # YAML flag ignored — bus is always ready
+    world.dali_ready = False  # YAML flag ignored - bus is always ready
     req2 = parse_request(_basic(CMD["QUERY_IS_DALI_READY"]))
     assert not isinstance(req2, ParseFailure)
     assert disp.handle(req2)[0] == ResponseType.OK
@@ -378,10 +378,10 @@ def test_colour_scene_blob_uses_ff_padding(dispatcher):
     assert not isinstance(req, ParseFailure)
     resp = disp.handle(req)
     blob = resp[3:-1]
-    # Scene 0 TC 3000 — unused bytes must be 0xFF per PDF
+    # Scene 0 TC 3000 - unused bytes must be 0xFF per PDF
     assert blob[0] == 0x20
     assert blob[3:7] == bytes([0xFF] * 4)
-    # Scene 2 unused — type 0xFF + six 0xFF
+    # Scene 2 unused - type 0xFF + six 0xFF
     assert blob[14:21] == bytes([0xFF] * 7)
 
 

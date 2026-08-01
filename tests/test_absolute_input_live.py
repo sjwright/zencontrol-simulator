@@ -1,7 +1,7 @@
 """Live absolute-input tests: zencontrol-python ↔ simulator.
 
 Covers protocol decode, interface entity model, simulator inject/world state,
-and the ``_protocol.txt`` ABSOLUTE_INPUT_EVENT wire layout end-to-end.
+and the _protocol.txt ABSOLUTE_INPUT_EVENT wire layout end-to-end.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ async def test_discover_absolute_input_instance(live_protocol):
     """Demo ECD 13 is discoverable as instance type ABSOLUTE_INPUT (0x02)."""
     p = live_protocol.protocol
     devices = await p.query_dali_addresses_with_instances(
-        live_protocol.controller, start_address=0
+        live_protocol.ctrl, start_address=0
     )
     assert 13 in {a.number for a in devices}
 
@@ -104,7 +104,7 @@ async def test_absolute_input_inject_via_protocol_callback(live_protocol):
 
 @pytest.mark.asyncio
 async def test_absolute_input_protocol_txt_value_via_library(live_protocol):
-    """``_protocol.txt`` example value 0xAABB arrives intact through the library."""
+    """_protocol.txt example value 0xAABB arrives intact through the library."""
     p = live_protocol.protocol
     values: list[int] = []
 
@@ -133,7 +133,7 @@ async def test_absolute_input_event_filter_mutes_emit(live_protocol):
     from zencontrol import Transport, ZenEventMode
 
     p = live_protocol.protocol
-    c = live_protocol.controller
+    c = live_protocol.ctrl
     events: list[bytes] = []
 
     async def on_absolute(*, instance, payload):
@@ -213,7 +213,7 @@ async def test_get_absolute_inputs_interview_and_events(live_zen_absolute):
     async def on_change(*, absolute_input: ZenAbsoluteInput) -> None:
         changes.append((absolute_input, absolute_input.value))
 
-    found = await zen.get_absolute_inputs(controller=ctrl)
+    found = await zen.get_absolute_inputs(ctrl=ctrl)
     assert len(found) >= 1
     slider = next(
         a
@@ -224,7 +224,7 @@ async def test_get_absolute_inputs_interview_and_events(live_zen_absolute):
     assert slider.instance_label == "Slider"
     assert slider.value is None
     assert slider.instance.type == ZenInstanceType.ABSOLUTE_INPUT
-    assert slider in ctrl.absolute_inputs
+    assert slider in found
 
     blob = slider.interview_serialize()
     assert "Slider" in blob

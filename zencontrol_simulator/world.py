@@ -155,7 +155,7 @@ class Colour:
 
         PDF COLOUR_CHANGED_EVENT: "If a fixture is just RGB or RGBW (and not
         RGBWAF) then the data length will be equal to the number of channels + 1."
-        So a 3-channel light reports ``[0x80, R, G, B]``. Tc / XY / full 6-channel
+        So a 3-channel light reports [0x80, R, G, B]. Tc / XY / full 6-channel
         RGBWAF, and any fixture with an unknown width, report full width.
         """
         raw = self.to_bytes()
@@ -266,7 +266,7 @@ class Light:
             self._set_lamp_on(self.level > 0)
 
     def visible_level(self, *, expire: bool = True) -> int:
-        """Level as seen on QUERY — interpolated while a custom fade is running."""
+        """Level as seen on QUERY - interpolated while a custom fade is running."""
         if expire:
             self._expire_fade_if_due()
         if (
@@ -381,7 +381,7 @@ class Group:
 
 @dataclass(slots=True)
 class InstanceTimers:
-    """Occupancy timers. Wire `last_detect` is seconds since last motion."""
+    """Occupancy timers. Wire last_detect is seconds since last motion."""
 
     deadtime: int = 1
     hold: int = 60
@@ -403,9 +403,9 @@ class Instance:
     timers: InstanceTimers | None = None
     active: bool = True
     error: bool = False
-    # Last absolute-input value (0–65535); None until an inject/event sets it.
+    # Last absolute-input value (0-65535); None until an inject/event sets it.
     value: int | None = None
-    # QUERY_INSTANCE_GROUPS: primary / first / second (0–15, or 0xFF = none).
+    # QUERY_INSTANCE_GROUPS: primary / first / second (0-15, or 0xFF = none).
     groups: tuple[int, int, int] = (0xFF, 0xFF, 0xFF)
 
 
@@ -422,7 +422,7 @@ class Device:
 class Profile:
     number: int
     label: str
-    # QUERY_PROFILE_INFORMATION behaviour byte (bit0=disabled, bits1–2=priority).
+    # QUERY_PROFILE_INFORMATION behaviour byte (bit0=disabled, bits1-2=priority).
     behaviour: int = 0
 
 
@@ -436,7 +436,7 @@ class SystemVariable:
 
 
 def daylight_sine_value(maximum: int, *, seconds_since_midnight: float | None = None) -> int:
-    """Map local time of day onto ``[0, maximum]`` with a raised cosine.
+    """Map local time of day onto [0, maximum] with a raised cosine.
 
     Midnight → 0, midday → *maximum*, next midnight → 0.
     """
@@ -505,8 +505,8 @@ class World:
     def is_startup_complete(self) -> bool:
         """Effective startup flag for QUERY_CONTROLLER_STARTUP_COMPLETE.
 
-        YAML/runtime ``startup_complete`` must be True, and any ``startup_delay_s``
-        must have elapsed since ``started_at``.
+        YAML/runtime startup_complete must be True, and any startup_delay_s
+        must have elapsed since started_at.
         """
         if not self.startup_complete:
             return False
@@ -898,7 +898,7 @@ class World:
             if light.fading_until is not None and now >= light.fading_until:
                 light._expire_fade_if_due()
             changes.append((light.address, current, dest))
-            # Track group-origin (64–79) and broadcast-origin (255) fades so we
+            # Track group-origin (64-79) and broadcast-origin (255) fades so we
             # can synthesize companion LEVEL_CHANGE_V2 on group wires when agreed.
             if origin is not None and (64 <= origin <= 79 or origin == 255):
                 involved.setdefault(origin, set()).add(light.address)
@@ -1283,7 +1283,7 @@ def _validate_world(world: World) -> None:
         channels = light.colour_features.rgbwaf_channels
         if channels and channels not in (3, 4, 5):
             log.warning(
-                "Light %s rgbwaf_channels=%s — zencontrol-python expects 3/4/5 for RGB/RGBW/RGBWW",
+                "Light %s rgbwaf_channels=%s - zencontrol-python expects 3/4/5 for RGB/RGBW/RGBWW",
                 light.address,
                 channels,
             )
@@ -1300,7 +1300,7 @@ def _validate_world(world: World) -> None:
     for a, b in zip(ids, ids[1:]):
         if b - a > 10:
             log.warning(
-                "System variable gap %s→%s > 10 — zencontrol-python may stop scanning early",
+                "System variable gap %s→%s > 10 - zencontrol-python may stop scanning early",
                 a,
                 b,
             )

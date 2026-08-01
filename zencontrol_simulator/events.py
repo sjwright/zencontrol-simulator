@@ -181,10 +181,10 @@ class EventEmitter:
     def occupancy(self, ecd: int, instance: int, occupied: bool = True) -> bool:
         """Emit OCCUPANCY_EVENT (IS_OCCUPIED) for an instance.
 
-        PDF: instance sensors only report motion detected — there is no instance
-        “not detected” event; payload byte 2 is unused (docs example ``0x01``).
-        ``occupied=False`` still emits that motion-shaped frame but skips
-        ``note_motion`` (raw/keepalive-style inject without advancing timers).
+        PDF: instance sensors only report motion detected - there is no instance
+        “not detected” event; payload byte 2 is unused (docs example 0x01).
+        occupied=False still emits that motion-shaped frame but skips
+        note_motion (raw/keepalive-style inject without advancing timers).
         """
         self._require_instance(ecd, instance, expect_occupancy=True)
         inst = self.world.instance(ecd, instance)
@@ -210,7 +210,7 @@ class EventEmitter:
     def group_occupancy(self, group_number: int, occupied: bool) -> bool:
         """Emit GROUP_OCCUPANCY_EVENT for a group wire.
 
-        PDF payload is ``[0xFF, occupied]`` — the instance byte is unused because
+        PDF payload is [0xFF, occupied] - the instance byte is unused because
         the event describes the group, not the sensor that triggered it.
         """
         return self.emit(
@@ -229,8 +229,8 @@ class EventEmitter:
     def absolute_input(self, ecd: int, instance: int, value: int) -> bool:
         """Emit ABSOLUTE_INPUT with payload [instance, value_hi, value_lo].
 
-        Matches ``_protocol.txt`` ABSOLUTE_INPUT_EVENT: ECD wire ``64+ecd``,
-        event ``0x02``, data length 3, big-endian 16-bit value.
+        Matches _protocol.txt ABSOLUTE_INPUT_EVENT: ECD wire 64+ecd,
+        event 0x02, data length 3, big-endian 16-bit value.
         """
         self._require_instance(ecd, instance, expect_absolute=True)
         value = int(value) & 0xFFFF
@@ -248,7 +248,7 @@ class EventEmitter:
         """Emit IS_OCCUPIED (0x06) as a keepalive without updating motion timers."""
         target = self.world.heartbeat_target()
         if target is None:
-            logger.debug("Heartbeat skipped — no occupancy sensor in world")
+            logger.debug("Heartbeat skipped - no occupancy sensor in world")
             return False
         ecd, instance = target
         return self.emit(

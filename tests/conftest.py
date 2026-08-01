@@ -26,13 +26,13 @@ class LiveProtocol:
     world: World
     sim: Simulator
     protocol: Any
-    controller: Any
+    ctrl: Any
 
     def ecg(self, number: int):
         from zencontrol import ZenAddress, ZenAddressType
 
         return ZenAddress(
-            controller=self.controller,
+            ctrl=self.ctrl,
             type=ZenAddressType.ECG,
             number=number,
         )
@@ -41,7 +41,7 @@ class LiveProtocol:
         from zencontrol import ZenAddress, ZenAddressType
 
         return ZenAddress(
-            controller=self.controller,
+            ctrl=self.ctrl,
             type=ZenAddressType.GROUP,
             number=number,
         )
@@ -50,7 +50,7 @@ class LiveProtocol:
         from zencontrol import ZenAddress, ZenAddressType
 
         return ZenAddress(
-            controller=self.controller,
+            ctrl=self.ctrl,
             type=ZenAddressType.ECD,
             number=number,
         )
@@ -58,7 +58,7 @@ class LiveProtocol:
     def broadcast(self):
         from zencontrol import ZenAddress
 
-        return ZenAddress.broadcast(self.controller)
+        return ZenAddress.broadcast(self.ctrl)
 
     def instance(self, ecd: int, number: int, type_code: int = 1):
         from zencontrol import ZenInstance, ZenInstanceType
@@ -88,7 +88,7 @@ async def live_protocol():
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
     protocol = ZenTestClient(unicast=True, listen_ip="127.0.0.1", listen_port=0)
-    controller = protocol.ctx.controller(
+    ctrl = protocol.ctx.ctrl(
         id=1,
         name="sim",
         label="Sim",
@@ -96,9 +96,9 @@ async def live_protocol():
         port=port,
         mac=mac,
     )
-    protocol.set_controllers([controller])
+    protocol.set_controllers([ctrl])
 
-    live = LiveProtocol(world=world, sim=sim, protocol=protocol, controller=controller)
+    live = LiveProtocol(world=world, sim=sim, protocol=protocol, ctrl=ctrl)
     try:
         yield live
     finally:

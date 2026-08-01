@@ -110,12 +110,12 @@ class Simulator:
             self.world.started_at = time.time()
         if self.world.startup_delay_s > 0:
             logger.info(
-                "Startup delay %.1fs — QUERY_CONTROLLER_STARTUP_COMPLETE incomplete until then",
+                "Startup delay %.1fs - QUERY_CONTROLLER_STARTUP_COMPLETE incomplete until then",
                 self.world.startup_delay_s,
             )
         if self.world.simulate_response_latency:
             logger.info(
-                "Response latency simulation on — default 10ms "
+                "Response latency simulation on - default 10ms "
                 "(labels 20ms; group numbers 30ms; colour features/limits 50ms; "
                 "instance label / group scene numbers 100ms)"
             )
@@ -147,7 +147,7 @@ class Simulator:
 
         mac = ":".join(f"{b:02x}" for b in self.world.mac)
         logger.info(
-            "Zencontrol simulator ready — MAC %s, %d lights, %d groups, %d devices",
+            "Zencontrol simulator ready - MAC %s, %d lights, %d groups, %d devices",
             mac,
             len(self.world.lights),
             len(self.world.groups),
@@ -164,7 +164,7 @@ class Simulator:
                 logger.warning(
                     "Heartbeat: IS_OCCUPIED ECD %s.%s every %.1fs "
                     "(discovery keepalive; zencontrol-python occupancy hold "
-                    "will not clear while this runs — set heartbeat_interval: 0 to disable)",
+                    "will not clear while this runs - set heartbeat_interval: 0 to disable)",
                     target[0],
                     target[1],
                     self.world.heartbeat_interval,
@@ -178,7 +178,7 @@ class Simulator:
         if simulated:
             names = ", ".join(f"{v.id}:{v.name}(max={v.simulate})" for v in simulated)
             logger.info(
-                "System variable daylight simulate every %.0fs — %s",
+                "System variable daylight simulate every %.0fs - %s",
                 SYSVAR_SIMULATE_INTERVAL,
                 names,
             )
@@ -220,7 +220,7 @@ class Simulator:
             self._transport = None
         self.events.close()
         logger.info(
-            "Stopped — %d requests (%d errors), %d events sent",
+            "Stopped - %d requests (%d errors), %d events sent",
             self.dispatcher.request_count,
             self.dispatcher.error_count,
             self.events.sent_count,
@@ -234,7 +234,7 @@ class Simulator:
         peer = writer.get_extra_info("peername")
         if self._tcp_sessions >= MAX_TCP_SESSIONS:
             logger.warning(
-                "Rejecting TCP client %s — already at max %d sessions",
+                "Rejecting TCP client %s - already at max %d sessions",
                 peer,
                 MAX_TCP_SESSIONS,
             )
@@ -398,7 +398,7 @@ class Simulator:
         """
         loop = asyncio.get_running_loop()
         logger.info(
-            "Interactive mode — type 'help' for inject commands "
+            "Interactive mode - type 'help' for inject commands "
             "(button / hold / occupy / absolute / level / scene / colour / "
             "profile / stats / quit)"
         )

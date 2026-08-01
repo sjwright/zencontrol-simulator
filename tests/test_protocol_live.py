@@ -33,7 +33,7 @@ async def _wait(seconds: float = 0.15) -> None:
 
 @pytest.mark.asyncio
 async def test_controller_version_and_label(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     version = await p.query_controller_version_number(c)
     assert version is not None
     assert "2" in version
@@ -44,7 +44,7 @@ async def test_controller_version_and_label(live_protocol):
 
 @pytest.mark.asyncio
 async def test_startup_delay_two_seconds_live():
-    """Live: -s 2 equivalent — incomplete until 2s after sim start, then OK."""
+    """Live: -s 2 equivalent - incomplete until 2s after sim start, then OK."""
     from zencontrol.testing import ZenTestClient
     from zencontrol_simulator.server import Simulator
     from zencontrol_simulator.world import load_world
@@ -64,7 +64,7 @@ async def test_startup_delay_two_seconds_live():
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
     protocol = ZenTestClient(unicast=True, listen_ip="127.0.0.1", listen_port=0)
-    controller = protocol.ctx.controller(
+    ctrl = protocol.ctx.ctrl(
         id=1,
         name="sim",
         label="Sim",
@@ -72,11 +72,11 @@ async def test_startup_delay_two_seconds_live():
         port=port,
         mac=mac,
     )
-    protocol.set_controllers([controller])
+    protocol.set_controllers([ctrl])
     try:
-        assert await protocol.query_controller_startup_complete(controller) is not True
+        assert await protocol.query_controller_startup_complete(ctrl) is not True
         await _wait(2.1)
-        assert await protocol.query_controller_startup_complete(controller) is True
+        assert await protocol.query_controller_startup_complete(ctrl) is True
     finally:
         await protocol.aclose()
         await sim.stop()
@@ -103,7 +103,7 @@ async def test_simulate_response_latency_live():
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
     protocol = ZenTestClient(unicast=True, listen_ip="127.0.0.1", listen_port=0)
-    controller = protocol.ctx.controller(
+    ctrl = protocol.ctx.ctrl(
         id=1,
         name="sim",
         label="Sim",
@@ -111,16 +111,16 @@ async def test_simulate_response_latency_live():
         port=port,
         mac=mac,
     )
-    protocol.set_controllers([controller])
+    protocol.set_controllers([ctrl])
     try:
         t0 = time.perf_counter()
-        assert await protocol.query_controller_label(controller) == world.label
+        assert await protocol.query_controller_label(ctrl) == world.label
         fast_ms = (time.perf_counter() - t0) * 1000
         assert 8 <= fast_ms <= 80, f"default latency out of range: {fast_ms:.1f}ms"
 
         inst = ZenInstance(
             address=ZenAddress(
-                controller=controller, type=ZenAddressType.ECD, number=0
+                ctrl=ctrl, type=ZenAddressType.ECD, number=0
             ),
             number=0,
             type=ZenInstanceType.PUSH_BUTTON,
@@ -142,15 +142,15 @@ async def test_simulate_response_latency_live():
 
 @pytest.mark.asyncio
 async def test_discover_control_gear(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     gears = await p.query_control_gear_dali_addresses(c)
     numbers = sorted(a.number for a in gears)
-    assert numbers == list(range(14))  # ECG 0–13 (incl. Living Fan / Theatre Blind)
+    assert numbers == list(range(14))  # ECG 0-13 (incl. Living Fan / Theatre Blind)
 
 
 @pytest.mark.asyncio
 async def test_discover_groups(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     groups = await p.query_group_numbers(c)
     numbers = sorted(a.number for a in groups)
     assert numbers == [0, 1, 2, 3, 4, 5]
@@ -167,7 +167,7 @@ async def test_discover_groups(live_protocol):
 
 @pytest.mark.asyncio
 async def test_discover_devices_and_instances(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     devices = await p.query_dali_addresses_with_instances(c, start_address=0)
     ecd_nums = sorted(a.number for a in devices)
     assert 0 in ecd_nums and 1 in ecd_nums and 2 in ecd_nums
@@ -360,7 +360,7 @@ async def test_colour_tc_set_and_query(live_protocol):
 
 @pytest.mark.asyncio
 async def test_colour_only_preserves_level_and_skips_level_event(live_protocol):
-    """DALI_COLOUR with arc 0xFF changes colour only — no LEVEL_CHANGE_V2."""
+    """DALI_COLOUR with arc 0xFF changes colour only - no LEVEL_CHANGE_V2."""
     p = live_protocol.protocol
     addr = live_protocol.ecg(0)
     levels: list[int] = []
@@ -423,7 +423,7 @@ async def test_colour_scene_data(live_protocol):
 
 @pytest.mark.asyncio
 async def test_profiles(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     numbers = await p.query_profile_numbers(c)
     assert numbers is not None
     assert {1, 2, 3}.issubset(set(numbers))
@@ -436,13 +436,13 @@ async def test_profiles(live_protocol):
 
 @pytest.mark.asyncio
 async def test_system_variables(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     assert await p.query_system_variable_name(c, 0) == "Demo Switch"
     assert await p.query_system_variable_name(c, 1) == "Demo Lux Sensor"
     assert await p.set_system_variable(c, 0, 9) is True
     assert await p.query_system_variable(c, 0) == 9
     assert live_protocol.world.system_variables[0].value == 9
-    # Unknown IDs rejected — library soft-fails TPI ERROR as None
+    # Unknown IDs rejected - library soft-fails TPI ERROR as None
     assert await p.set_system_variable(c, 99, 1) is None
     assert 99 not in live_protocol.world.system_variables
 
@@ -547,7 +547,7 @@ async def test_dapc_sequence(live_protocol):
 
 @pytest.mark.asyncio
 async def test_tpi_event_mode_and_unicast_roundtrip(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     assert await p.tpi_event_emit(
         c, ZenEventMode(enabled=True, filtering=False, transport=Transport.MULTICAST)
     ) is True
@@ -563,7 +563,7 @@ async def test_tpi_event_mode_and_unicast_roundtrip(live_protocol):
 @pytest.mark.asyncio
 async def test_clear_tpi_event_unicast_address(live_protocol):
     """Sim extension: omit IP/port (zeros) clears unicast targeting."""
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     await p.set_tpi_event_unicast_address(c, ipaddr="127.0.0.1", port=6970)
     await p.set_tpi_event_unicast_address(c)
     info = await p.query_tpi_event_unicast_address(c)
@@ -604,7 +604,7 @@ async def test_multicast_event_receipt():
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
     protocol = ZenTestClient(unicast=False)
-    controller = protocol.ctx.controller(
+    ctrl = protocol.ctx.ctrl(
         id=1,
         name="sim",
         label="Sim",
@@ -612,7 +612,7 @@ async def test_multicast_event_receipt():
         port=port,
         mac=mac,
     )
-    protocol.set_controllers([controller])
+    protocol.set_controllers([ctrl])
     buttons: list[tuple[int, int]] = []
 
     async def on_button(*, instance, payload):
@@ -633,7 +633,7 @@ async def test_multicast_event_receipt():
 @pytest.mark.asyncio
 async def test_level_and_button_event_filters_mute_emit(live_protocol):
     """Filtering + TPI filters mute LEVEL_CHANGE_V2 and BUTTON_PRESS at the client."""
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     levels: list[int] = []
     buttons: list[tuple[int, int]] = []
 
@@ -754,14 +754,14 @@ async def test_button_and_occupancy_inject_via_protocol(live_protocol):
 
 @pytest.mark.asyncio
 async def test_profile_and_sysvar_events_via_protocol(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     profiles: list = []
     sysvars: list = []
 
-    async def on_profile(*, controller, profile, payload):
+    async def on_profile(*, ctrl, profile, payload):
         profiles.append(profile)
 
-    async def on_sysvar(*, controller, target, value, payload):
+    async def on_sysvar(*, ctrl, target, value, payload):
         sysvars.append((target, value))
 
     p.set_callbacks(
@@ -802,7 +802,7 @@ async def test_group_level_event_via_protocol(live_protocol):
 
 
 # ---------------------------------------------------------------------------
-# Labels, XY colour, scenes 8–11, broadcast, group queries, inject
+# Labels, XY colour, scenes 8-11, broadcast, group queries, inject
 # ---------------------------------------------------------------------------
 
 
@@ -901,11 +901,11 @@ async def test_group_last_scene_and_status(live_protocol):
 
 @pytest.mark.asyncio
 async def test_startup_incomplete_and_dali_always_ready(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     live_protocol.world.startup_complete = False
     assert await p.query_controller_startup_complete(c) is not True
     live_protocol.world.startup_complete = True
-    live_protocol.world.dali_ready = False  # ignored — simulator has no bus fault
+    live_protocol.world.dali_ready = False  # ignored - simulator has no bus fault
     assert await p.query_is_dali_ready(c) is True
 
 
@@ -928,7 +928,7 @@ async def test_xy_identity_and_serial(live_protocol):
     assert await p.query_dali_fitting_number(addr) == "1.3"
     assert await p.query_dali_fitting_number(live_protocol.ecd(0)) == "1.100"
     assert await p.query_dali_fitting_number(live_protocol.ecd(4)) == "1.104"
-    assert await p.query_controller_fitting_number(live_protocol.controller) == "1"
+    assert await p.query_controller_fitting_number(live_protocol.ctrl) == "1"
     assert await p.query_dali_instance_fitting_number(
         live_protocol.instance(4, 2)
     ) == "1.104.2"
@@ -955,7 +955,7 @@ async def test_inject_level_scene_colour_profile_events(live_protocol):
     async def on_colour(*, address, colour, payload):
         colours.append((address.number, colour))
 
-    async def on_profile(*, controller, profile, payload):
+    async def on_profile(*, ctrl, profile, payload):
         profiles.append(profile)
 
     p.set_callbacks(
@@ -1036,7 +1036,7 @@ async def test_custom_fade_receives_intermediate_and_final_events(live_protocol)
 
 @pytest.mark.asyncio
 async def test_return_to_scheduled_profile(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     live_protocol.world.last_scheduled_profile = 1
     assert await p.change_profile_number(c, 3) is True
     assert await p.return_to_scheduled_profile(c) is True
@@ -1045,7 +1045,7 @@ async def test_return_to_scheduled_profile(live_protocol):
 
 @pytest.mark.asyncio
 async def test_sysvar_name_unknown_is_none(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     assert await p.query_system_variable_name(c, 99) is None
     assert await p.query_system_variable(c, 99) is None
 

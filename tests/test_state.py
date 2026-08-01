@@ -670,7 +670,7 @@ def test_ecg_scene_clears_parent_group_scene_current():
 
 
 def test_group_scene_clears_sibling_group_scene_current():
-    """Light 1 is in groups 0 and 1 — controlling group 0 must clear group 1."""
+    """Light 1 is in groups 0 and 1 - controlling group 0 must clear group 1."""
     disp, world, _ = _disp()
     # Scene on group 1 first
     req = parse_request(_basic(CMD["DALI_SCENE"], address=65, d2=0))
@@ -1093,7 +1093,7 @@ def test_query_dali_fitting_number():
         (1, "1.1"),
         (64, "1.100"),  # ECD 0 → address+100
         (64 + 4, "1.104"),  # ECD 4
-        (50, "1.50"),  # PDF: no validity check — missing gear still answers
+        (50, "1.50"),  # PDF: no validity check - missing gear still answers
     )
     for addr, expected in cases:
         req = parse_request(_basic(CMD["QUERY_DALI_FITTING_NUMBER"], address=addr))

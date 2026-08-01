@@ -1,8 +1,8 @@
 """Event emission matrix for ECG / group / broadcast state-changing commands.
 
 Conventions (matching real controllers / existing simulator behaviour):
-- ECG (0–63): events for that ECG only (parent groups are not re-emitted)
-- Group (64–79): members + group wire when destinations agree
+- ECG (0-63): events for that ECG only (parent groups are not re-emitted)
+- Group (64-79): members + group wire when destinations agree
 - Broadcast (255): every ECG + each group wire when that group's members agree
 - INHIBIT: mutates state only (no TPI event code)
 """

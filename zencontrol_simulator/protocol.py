@@ -92,8 +92,8 @@ def request_frame_size(buf: bytes | bytearray) -> int | None:
 
     Used for TCP/stream reassembly. Returns:
       - positive int when a full frame is available
-      - ``None`` when more bytes are required
-      - ``0`` when the leading byte is not MAGIC (caller should drop one byte)
+      - None when more bytes are required
+      - 0 when the leading byte is not MAGIC (caller should drop one byte)
     """
     if not buf:
         return None

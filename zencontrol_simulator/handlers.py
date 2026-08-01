@@ -1,4 +1,4 @@
-"""Command dispatch — only opcodes used by zencontrol-python / zencontrol-tpi."""
+"""Command dispatch - only opcodes used by zencontrol-python / zencontrol-tpi."""
 
 from __future__ import annotations
 
@@ -128,11 +128,11 @@ LEGACY_ACK_COMMANDS = frozenset(
 )
 
 MAX_SCENE = 12
-# Zencontrol names 12 scenes (0–11) in the cloud: colour scene opcodes cover
-# 0–7 and 8–11, and group scene labels stop at the same place. The DALI gear
+# Zencontrol names 12 scenes (0-11) in the cloud: colour scene opcodes cover
+# 0-7 and 8-11, and group scene labels stop at the same place. The DALI gear
 # scene table underneath holds 16 (see QUERY_SCENE_LEVELS_BY_ADDRESS), and the
-# PDF neither states a ceiling for DALI_SCENE nor says whether slots 12–15 are
-# reachable — its own example shows levels in 14 and 15. We cap at the cloud
+# PDF neither states a ceiling for DALI_SCENE nor says whether slots 12-15 are
+# reachable - its own example shows levels in 14 and 15. We cap at the cloud
 # layer pending hardware confirmation (DOCUMENTATION_ISSUES.md §1.1).
 SCENE_LEVEL_SLOTS = 16
 
@@ -151,7 +151,7 @@ RESPONSE_LATENCY_MS: dict[int, int] = {
 
 
 def response_latency_s(command: int | None, *, enabled: bool) -> float:
-    """Seconds to wait before sending a reply when ``-t`` latency sim is on."""
+    """Seconds to wait before sending a reply when -t latency sim is on."""
     if not enabled:
         return 0.0
     if command is None:
@@ -237,7 +237,7 @@ class CommandDispatcher:
             CMD["QUERY_CONTROLLER_STARTUP_COMPLETE"],
             lambda r: _ok(r.seq) if w.is_startup_complete() else _no_answer(r.seq),
         )
-        # No DALI bus fault model — always ready.
+        # No DALI bus fault model - always ready.
         self._reg(CMD["QUERY_IS_DALI_READY"], lambda r: _ok(r.seq))
         # Operating mode: always default 0 (no manufacturer modes modelled)
         self._reg(CMD["QUERY_OPERATING_MODE_BY_ADDRESS"], self._query_operating_mode)
@@ -497,7 +497,7 @@ class CommandDispatcher:
         return _answer(request.seq, bytes(nums))
 
     def _query_group_by_number(self, request: Request) -> bytes:
-        # Address byte is group number 0–15 (not wire 64–79).
+        # Address byte is group number 0-15 (not wire 64-79).
         # PDF: no members → NO_ANSWER.
         group_num = self._addr(request)
         group = self.world.group(group_num)
@@ -733,8 +733,8 @@ class CommandDispatcher:
 
     def _query_scene_levels(self, request: Request) -> bytes:
         def go(light: Light) -> bytes:
-            # Zencontrol scenes are 0–11. PDF returns 16 DALI gear slots (0–15);
-            # fill 0–11 from world state and leave 12–15 as 0xFF (unused).
+            # Zencontrol scenes are 0-11. PDF returns 16 DALI gear slots (0-15);
+            # fill 0-11 from world state and leave 12-15 as 0xFF (unused).
             out = bytearray([0xFF] * SCENE_LEVEL_SLOTS)
             for i, level in enumerate(light.scene_levels[:MAX_SCENE]):
                 if level is not None:
@@ -935,7 +935,7 @@ class CommandDispatcher:
             return _error(request.seq, ErrorCode.INVALID_ARGS)
         var = self.world.system_variables.get(var_id)
         if var is None:
-            # Don't invent unnamed vars — discovery is label-gated and gaps hide later IDs
+            # Don't invent unnamed vars - discovery is label-gated and gaps hide later IDs
             return _error(request.seq, ErrorCode.INVALID_ARGS)
         value = int.from_bytes(
             bytes([self._data(request, 2), self._data(request, 3)]), "big", signed=True

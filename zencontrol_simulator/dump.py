@@ -130,15 +130,15 @@ def _scene_colours(colours: list[Any] | None) -> list[dict[str, Any] | None]:
     return out
 
 
-async def _raw_byte(tpi: Any, controller: Any, command: int, address: int = 0) -> int | None:
-    response = await tpi._send_basic(controller, command, address)
+async def _raw_byte(tpi: Any, ctrl: Any, command: int, address: int = 0) -> int | None:
+    response = await tpi._send_basic(ctrl, command, address)
     data = tpi._response_to_bytes_or_none(response)
     if data and len(data) >= 1:
         return int(data[0])
     return None
 
 
-async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
+async def dump_controller(tpi: Any, ctrl: Any) -> dict[str, Any]:
     from zencontrol import ZenCgType, ZenInstanceType
     from zencontrol.api.commands import CMD
     from zencontrol.api.types import Const
@@ -151,9 +151,9 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
         ZenInstanceType.GENERAL_SENSOR: "general_sensor",
     }
 
-    LOGGER.info("Querying controller %s (%s:%s)", controller.mac, controller.host, controller.port)
+    LOGGER.info("Querying controller %s (%s:%s)", ctrl.mac, ctrl.host, ctrl.port)
 
-    version = await tpi.query_controller_version_number(controller)
+    version = await tpi.query_controller_version_number(ctrl)
     version_parts = [2, 2, 0]
     if isinstance(version, str):
         try:
@@ -162,36 +162,36 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
                 version_parts.append(0)
         except ValueError:
             pass
-    label = await tpi.query_controller_label(controller) or controller.label or "Controller"
-    startup = await tpi.query_controller_startup_complete(controller)
-    dali_ready = await tpi.query_is_dali_ready(controller)
-    event_mode = await _raw_byte(tpi, controller, CMD.QUERY_TPI_EVENT_EMIT_STATE)
+    label = await tpi.query_controller_label(ctrl) or ctrl.label or "Controller"
+    startup = await tpi.query_controller_startup_complete(ctrl)
+    dali_ready = await tpi.query_is_dali_ready(ctrl)
+    event_mode = await _raw_byte(tpi, ctrl, CMD.QUERY_TPI_EVENT_EMIT_STATE)
 
-    current_profile = await tpi.query_current_profile_number(controller)
+    current_profile = await tpi.query_current_profile_number(ctrl)
     last_scheduled = current_profile or 0
-    profile_info = await tpi.query_profile_information(controller)
+    profile_info = await tpi.query_profile_information(ctrl)
     if profile_info:
         state, _profiles_detail = profile_info
         current_profile = int(state.current_active_profile)
         last_scheduled = int(state.last_scheduled_profile)
 
-    profile_numbers = await tpi.query_profile_numbers(controller) or []
+    profile_numbers = await tpi.query_profile_numbers(ctrl) or []
     if current_profile is not None and current_profile not in profile_numbers:
         profile_numbers = sorted(set(profile_numbers) | {current_profile})
     profile_items = []
     for number in sorted(profile_numbers):
-        plabel = await tpi.query_profile_label(controller, number)
+        plabel = await tpi.query_profile_label(ctrl, number)
         profile_items.append({
             "number": int(number),
             "label": plabel or f"Profile {number}",
         })
         LOGGER.info("  profile %s: %s", number, plabel)
 
-    if controller.mac:
-        mac = controller.mac.replace("-", ":").lower()
+    if ctrl.mac:
+        mac = ctrl.mac.replace("-", ":").lower()
     else:
         mac = "00:00:00:00:00:00"
-        LOGGER.warning("Controller MAC unknown — wrote %s; set controller.mac in the YAML if needed", mac)
+        LOGGER.warning("Controller MAC unknown - wrote %s; set controller.mac in the YAML if needed", mac)
 
     world: dict[str, Any] = {
         "controller": {
@@ -203,7 +203,7 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
             "startup_complete": bool(startup) if startup is not None else True,
             "dali_ready": bool(dali_ready) if dali_ready is not None else True,
             "event_mode": event_mode if event_mode is not None else 0x01,
-            # Dump is a static snapshot — disable occupancy heartbeat by default.
+            # Dump is a static snapshot - disable occupancy heartbeat by default.
             "heartbeat_interval": 0,
         },
         "lights": [],
@@ -218,7 +218,7 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
     }
 
     # --- Groups (labels / scenes first so light membership can reference them) ---
-    group_addrs = await tpi.query_group_numbers(controller) or []
+    group_addrs = await tpi.query_group_numbers(ctrl) or []
     LOGGER.info("Groups: %d", len(group_addrs))
     for gaddr in sorted(group_addrs, key=lambda a: a.number):
         glabel = await tpi.query_group_label(gaddr)
@@ -240,15 +240,15 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
         LOGGER.info("  group %s: %s (%d scenes)", gaddr.number, glabel, len(scenes))
 
     # --- Control gear / lights ---
-    gears = await tpi.query_control_gear_dali_addresses(controller) or []
+    gears = await tpi.query_control_gear_dali_addresses(ctrl) or []
     LOGGER.info("Control gear: %d", len(gears))
     for addr in sorted(gears, key=lambda a: a.number):
         status_raw = await _raw_byte(
-            tpi, controller, CMD.DALI_QUERY_CONTROL_GEAR_STATUS, addr.ecg()
+            tpi, ctrl, CMD.DALI_QUERY_CONTROL_GEAR_STATUS, addr.ecg()
         )
         # Skip gear that does not answer status (absent / failed)
         if status_raw is None:
-            LOGGER.warning("  ECG %s: no status — skipping", addr.number)
+            LOGGER.warning("  ECG %s: no status - skipping", addr.number)
             continue
 
         dlabel = await tpi.query_dali_device_label(addr)
@@ -326,7 +326,7 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
         )
 
     # --- ECDs / instances ---
-    ecds = await tpi.query_dali_addresses_with_instances(controller, 0) or []
+    ecds = await tpi.query_dali_addresses_with_instances(ctrl, 0) or []
     LOGGER.info("Devices with instances: %d", len(ecds))
     for ecd in sorted(ecds, key=lambda a: a.number):
         dlabel = await tpi.query_dali_device_label(ecd)
@@ -340,7 +340,7 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
             type_name = instance_type_names.get(inst.type)
             if type_name is None:
                 LOGGER.warning(
-                    "  ECD %s inst %s: unsupported type %s — skipped",
+                    "  ECD %s inst %s: unsupported type %s - skipped",
                     ecd.number,
                     inst.number,
                     inst.type,
@@ -393,14 +393,14 @@ async def dump_controller(tpi: Any, controller: Any) -> dict[str, Any]:
     failed = 0
     LOGGER.info("System variables…")
     for vid in range(Const.MAX_SYSVAR):
-        name = await tpi.query_system_variable_name(controller, vid)
+        name = await tpi.query_system_variable_name(ctrl, vid)
         if not name:
             failed += 1
             if failed >= give_up_after:
                 break
             continue
         failed = 0
-        value = await tpi.query_system_variable(controller, vid)
+        value = await tpi.query_system_variable(ctrl, vid)
         world["system_variables"].append({
             "id": int(vid),
             "name": name,
@@ -514,7 +514,7 @@ async def _dump(args: argparse.Namespace) -> None:
     from zencontrol.testing import ZenTestClient
 
     async with ZenTestClient(print_traffic=False) as tpi:
-        ctrl = tpi.ctx.controller(
+        ctrl = tpi.ctx.ctrl(
             id=1,
             name="dump",
             label="",
@@ -527,10 +527,10 @@ async def _dump(args: argparse.Namespace) -> None:
 
         ready = await tpi.query_controller_startup_complete(ctrl)
         if ready is False:
-            LOGGER.warning("Controller reports startup incomplete — continuing anyway")
+            LOGGER.warning("Controller reports startup incomplete - continuing anyway")
         dali = await tpi.query_is_dali_ready(ctrl)
         if dali is False:
-            LOGGER.warning("DALI bus not ready — continuing anyway")
+            LOGGER.warning("DALI bus not ready - continuing anyway")
 
         world = await dump_controller(tpi, ctrl)
         timing_stats = tpi.api_timing_stats()

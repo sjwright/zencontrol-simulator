@@ -199,7 +199,7 @@ def test_ean_for_ecg_and_ecd():
 
 @pytest.mark.asyncio
 async def test_live_fitting_and_ean(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     assert await p.query_controller_fitting_number(c) == "1"
     assert await p.query_dali_fitting_number(live_protocol.ecg(7)) == "1.7"
     assert await p.query_dali_fitting_number(live_protocol.ecd(4)) == "1.104"
@@ -223,7 +223,7 @@ def test_scene_dim_time_starts_fade_with_origin(monkeypatch):
     events = EventEmitter(world)
     base = 2_100_000_000.0
     monkeypatch.setattr(time_mod, "time", lambda: base)
-    events.apply_and_emit_scene(64, 1)  # group 0 — mixed destinations
+    events.apply_and_emit_scene(64, 1)  # group 0 - mixed destinations
     assert world.lights[0].fade_origin == 64
     assert world.lights[1].fade_origin == 64
     assert world.lights[0].fade_to == 80
@@ -317,7 +317,7 @@ def test_query_operating_mode_default_zero():
 
 def test_override_button_led_returns_ok():
     disp, _, _ = _disp()
-    # ECD 0 wire 64, instance 0, LED on (0x02) — response ignores payload
+    # ECD 0 wire 64, instance 0, LED on (0x02) - response ignores payload
     req = parse_request(_basic(CMD["OVERRIDE_DALI_BUTTON_LED_STATE"], address=64, d1=0x02, d2=0))
     assert not isinstance(req, ParseFailure)
     resp = disp.handle(req)
@@ -426,11 +426,11 @@ async def test_live_group_scene_colour_and_scene_events(live_protocol):
 
 @pytest.mark.asyncio
 async def test_live_readiness_stubs_toggle(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     assert await p.query_controller_startup_complete(c) is True
     assert await p.query_is_dali_ready(c) is True
     live_protocol.world.startup_complete = False
     assert await p.query_controller_startup_complete(c) is not True
     live_protocol.world.startup_complete = True
-    live_protocol.world.dali_ready = False  # ignored — always OK
+    live_protocol.world.dali_ready = False  # ignored - always OK
     assert await p.query_is_dali_ready(c) is True

@@ -1,7 +1,7 @@
 """Permutation coverage for the expanded demo world in config.yaml.
 
 Exercises entity kinds that exist in the demo config but were only lightly
-touched by the core ECG 0–3 / group 0–1 suite: hallway overlap, switching
+touched by the core ECG 0-3 / group 0-1 suite: hallway overlap, switching
 gear, second colour fixtures, ECD pad shapes, and extra system variables.
 """
 
@@ -45,7 +45,7 @@ async def _wait(seconds: float = 0.15) -> None:
 
 
 def test_hallway_group_scene_clears_sibling():
-    """Light 5 is in groups 2 and 3 — scene on one clears the other."""
+    """Light 5 is in groups 2 and 3 - scene on one clears the other."""
     disp, world, _ = _disp()
     # Group 3 scene first
     req = parse_request(_basic(CMD["DALI_SCENE"], address=67, d2=0))
@@ -213,7 +213,7 @@ def test_group_4_mixed_level_returns_255():
 
 
 # ---------------------------------------------------------------------------
-# State: ECD shapes + sysvars 2–5
+# State: ECD shapes + sysvars 2-5
 # ---------------------------------------------------------------------------
 
 
@@ -405,7 +405,7 @@ async def test_live_second_colour_fixtures(live_protocol):
 @pytest.mark.asyncio
 async def test_live_ecd_shape_discovery_and_labels(live_protocol):
     p = live_protocol.protocol
-    devices = await p.query_dali_addresses_with_instances(live_protocol.controller, start_address=0)
+    devices = await p.query_dali_addresses_with_instances(live_protocol.ctrl, start_address=0)
     nums = {a.number for a in devices}
     assert {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}.issubset(nums)
 
@@ -460,7 +460,7 @@ async def test_live_inject_on_alternate_ecds(live_protocol):
 
 @pytest.mark.asyncio
 async def test_live_sysvars_extra_and_profiles(live_protocol):
-    p, c = live_protocol.protocol, live_protocol.controller
+    p, c = live_protocol.protocol, live_protocol.ctrl
     assert await p.query_system_variable_name(c, 2) == "Garage Side Door switch"
     assert await p.query_system_variable_name(c, 3) == "Porch Lux sensor"
     assert await p.query_system_variable_name(c, 4) == "Garage Front Opening"
