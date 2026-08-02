@@ -141,7 +141,7 @@ async def _raw_byte(tpi: Any, ctrl: Any, command: int, address: int = 0) -> int 
 async def dump_controller(tpi: Any, ctrl: Any) -> dict[str, Any]:
     from zencontrol import ZenCgType, ZenInstanceType
     from zencontrol.api.commands import CMD
-    from zencontrol.api.types import Const
+    from zencontrol.api.const import Const
 
     instance_type_names = {
         ZenInstanceType.PUSH_BUTTON: "push_button",
