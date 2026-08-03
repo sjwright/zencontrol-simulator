@@ -385,11 +385,11 @@ lights:
     scene_levels: [null, null, null, null, null, null, null, null, null, null, null, null]
     status: 0x00
 
-  # Fan / blind demo ECGs (label suffix classifies in zencontrol-python)
+  # Fan / blind demo ECGs (GTIN allowlist classifies in zencontrol-python)
   - address: 12
     label: "Living Fan"
     serial: 0x010000000000000D
-    ean: 6971103532627
+    ean: 6971103534836 # actual EAN/GTIN for zc-smart-fan
     level: 0
     min_level: 0
     max_level: 254
@@ -409,7 +409,7 @@ lights:
   - address: 13
     label: "Theatre Blind"
     serial: 0x010000000000000E
-    ean: 6971103532627
+    ean: 6971103534829 # actual EAN/GTIN for zc-smart-blind
     level: 254
     min_level: 0
     max_level: 254
