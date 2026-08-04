@@ -865,7 +865,9 @@ class CommandDispatcher:
         )
 
     def _dali_colour(self, request: Request) -> bytes:
-        if len(request.data) < 3 or len(request.data) > 9:
+        # Spec: addr + arc + type + 7 colour-data (10). Short frames still accepted
+        # for older clients; UDP historically forgave omitted 0xFF padding.
+        if len(request.data) < 3 or len(request.data) > 10:
             return _error(request.seq, ErrorCode.INVALID_ARGS)
         colour = Colour.from_bytes(request.data[2:])
         if colour is None:

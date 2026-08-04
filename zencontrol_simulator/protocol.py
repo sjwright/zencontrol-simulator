@@ -13,7 +13,8 @@ MULTICAST_GROUP = "239.255.90.67"
 MULTICAST_PORT = 6969
 MAX_TCP_SESSIONS = 5
 
-# DALI_COLOUR stream bounds (clients omit unused colour bytes; PDF max is 14).
+# DALI_COLOUR: fixed length is 14 (magic+seq+cmd+addr+arc+type+7 data+checksum).
+# Short frames (omitted 0xFF pads) are still accepted for older clients.
 _COLOUR_FRAME_MIN = 7   # magic+seq+cmd+addr+arc+type+checksum
 _COLOUR_FRAME_MAX = 14
 
