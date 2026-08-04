@@ -343,3 +343,105 @@ async def test_udp_and_tcp_share_port():
         await writer.wait_closed()
     finally:
         await sim.stop()
+
+
+# ---------------------------------------------------------------------------
+# zencontrol-python TCP command path (optional; skips without zencontrol)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_zencontrol_tcp_client_query_and_colour(tcp_sim):
+    """ZenTcpClient speaks the same framing the simulator's TCP server expects."""
+    pytest.importorskip("zencontrol")
+    from zencontrol import ZenAddress, ZenAddressType, ZenTcColour
+    from zencontrol.api.commands import CMD, ZenCommandClient
+    from zencontrol.api.models import ZenController
+    from zencontrol.io import ZenRequest, ZenRequestType, ZenResponseType, ZenTcpClient
+
+    client = await ZenTcpClient.create(("127.0.0.1", tcp_sim.bind_port))
+    try:
+        resp = await client.send_request_with_retries(
+            ZenRequest(
+                command=CMD.QUERY_CONTROLLER_LABEL,
+                data=[0x00],
+                request_type=ZenRequestType.BASIC,
+            )
+        )
+        assert resp.response_type is ZenResponseType.ANSWER
+        assert resp.data == tcp_sim.world.label.encode("ascii")
+    finally:
+        await client.close()
+
+    # Colour frames must be padded to 1+7 bytes for TCP (FW ≥ 2.2.32).
+    commands = ZenCommandClient()
+    ctrl = ZenController(
+        id="1",
+        name="tcp-sim",
+        label="TCP Sim",
+        host="127.0.0.1",
+        port=tcp_sim.bind_port,
+        tcp=True,
+    )
+    addr = ZenAddress(ctrl=ctrl, type=ZenAddressType.ECG, number=0)
+    try:
+        assert await commands.dali_colour(addr, ZenTcColour(kelvin=4100)) is True
+        assert tcp_sim.world.lights[0].colour is not None
+        assert tcp_sim.world.lights[0].colour.kelvin == 4100
+    finally:
+        await commands.aclose()
+
+
+@pytest.mark.asyncio
+async def test_zencontrol_command_client_tcp_flag(tcp_sim):
+    """ZenCommandClient opens ZenTcpClient when ctrl.tcp is True."""
+    pytest.importorskip("zencontrol")
+    from zencontrol import ZenAddress, ZenAddressType, ZenTcpClient
+    from zencontrol.api.commands import ZenCommandClient
+    from zencontrol.api.models import ZenController
+    from zencontrol.io import ZenClient
+
+    commands = ZenCommandClient()
+    ctrl = ZenController(
+        id="1",
+        name="tcp-sim",
+        label="TCP Sim",
+        host="127.0.0.1",
+        port=tcp_sim.bind_port,
+        tcp=True,
+    )
+    addr = ZenAddress(ctrl=ctrl, type=ZenAddressType.ECG, number=1)
+    try:
+        assert await commands.query_controller_label(ctrl) == tcp_sim.world.label
+        assert isinstance(commands.client_for(ctrl), ZenTcpClient)
+        assert not isinstance(commands.client_for(ctrl), ZenClient)
+
+        await commands.dali_arc_level(addr, 77)
+        assert tcp_sim.world.lights[1].level == 77
+    finally:
+        await commands.aclose()
+
+
+@pytest.mark.asyncio
+async def test_zencontrol_add_controller_tcp(tcp_sim):
+    """ZenControl.add_controller(tcp=True) uses the TCP command plane."""
+    pytest.importorskip("zencontrol")
+    from zencontrol import ZenControl, ZenTcpClient
+
+    mac = ":".join(f"{b:02x}" for b in tcp_sim.world.mac)
+    async with ZenControl(listen_ip="127.0.0.1", listen_port=0) as zen:
+        ctrl = zen.add_controller(
+            id=1,
+            name="tcp-sim",
+            label="TCP Sim",
+            host="127.0.0.1",
+            port=tcp_sim.bind_port,
+            mac=mac,
+            tcp=True,
+            unicast=True,
+        )
+        assert ctrl.tcp is True
+        assert await zen.commands.query_controller_label(ctrl) == tcp_sim.world.label
+        assert isinstance(zen.commands.client_for(ctrl), ZenTcpClient)
+        await ctrl.interview()
+        assert ctrl.version is not None

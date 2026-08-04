@@ -36,7 +36,7 @@ async def test_zencontrol_python_discovery_and_control():
     colour_events: list = []
 
     try:
-        async with zencontrol.ZenControl(unicast=True) as zen:
+        async with zencontrol.ZenControl(listen_ip="127.0.0.1", listen_port=0) as zen:
             zen.add_controller(
                 id=1,
                 name="sim",
@@ -44,6 +44,7 @@ async def test_zencontrol_python_discovery_and_control():
                 host="127.0.0.1",
                 port=port,
                 mac=mac,
+                unicast=True,
             )
             ctrl = zen.controllers[0]
             assert await zen.commands.query_controller_startup_complete(ctrl)

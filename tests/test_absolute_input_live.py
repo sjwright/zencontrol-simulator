@@ -185,7 +185,7 @@ async def live_zen_absolute():
     port = sim._transport.get_extra_info("sockname")[1]
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
-    zen = ZenControl(unicast=True)
+    zen = ZenControl(listen_ip="127.0.0.1", listen_port=0)
     zen.add_controller(
         id=1,
         name="sim",
@@ -193,6 +193,7 @@ async def live_zen_absolute():
         host="127.0.0.1",
         port=port,
         mac=mac,
+        unicast=True,
     )
     try:
         yield zen, sim, world

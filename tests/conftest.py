@@ -87,7 +87,7 @@ async def live_protocol():
     port = sim._transport.get_extra_info("sockname")[1]
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
-    protocol = ZenTestClient(unicast=True, listen_ip="127.0.0.1", listen_port=0)
+    protocol = ZenTestClient(listen_ip="127.0.0.1", listen_port=0)
     ctrl = protocol.ctx.ctrl(
         id=1,
         name="sim",
@@ -95,6 +95,7 @@ async def live_protocol():
         host="127.0.0.1",
         port=port,
         mac=mac,
+        unicast=True,
     )
     protocol.set_controllers([ctrl])
 

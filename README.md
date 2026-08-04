@@ -99,8 +99,9 @@ pytest
 Without zencontrol-python installed, unit/state tests still run; live protocol
 tests in `tests/test_protocol_live.py` skip via `importorskip`. Those tests
 start the simulator on an ephemeral port and drive it through
-`zencontrol.testing.ZenTestClient` (unicast TPI Advanced test facade over
-`ZenCommandClient` + event wiring). The `live` extra pulls
+`zencontrol.testing.ZenTestClient` (TPI Advanced test facade over
+`ZenCommandClient` + event wiring; set `unicast=True` / `tcp=True` on the
+controller). The `live` extra pulls
 `zencontrol-python>=0.1.7` from PyPI when you are not using an editable checkout.
 
 `tests/test_demo_permutations.py` exercises the expanded demo world: hallway
@@ -111,7 +112,8 @@ and extra system variables.
 simulator follows, so a behaviour change that contradicts the document fails
 with the wording it broke. `tests/test_event_delivery.py` checks which transport
 each event mode actually reaches, and `tests/test_tcp.py` covers stream
-reassembly across arbitrary segment boundaries.
+reassembly across arbitrary segment boundaries plus the zencontrol-python
+`ZenTcpClient` / `tcp=True` command path.
 
 ## Protocol reference
 

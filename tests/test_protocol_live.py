@@ -63,7 +63,7 @@ async def test_startup_delay_two_seconds_live():
     port = sim._transport.get_extra_info("sockname")[1]
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
-    protocol = ZenTestClient(unicast=True, listen_ip="127.0.0.1", listen_port=0)
+    protocol = ZenTestClient(listen_ip="127.0.0.1", listen_port=0)
     ctrl = protocol.ctx.ctrl(
         id=1,
         name="sim",
@@ -71,6 +71,7 @@ async def test_startup_delay_two_seconds_live():
         host="127.0.0.1",
         port=port,
         mac=mac,
+        unicast=True,
     )
     protocol.set_controllers([ctrl])
     try:
@@ -102,7 +103,7 @@ async def test_simulate_response_latency_live():
     port = sim._transport.get_extra_info("sockname")[1]
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
-    protocol = ZenTestClient(unicast=True, listen_ip="127.0.0.1", listen_port=0)
+    protocol = ZenTestClient(listen_ip="127.0.0.1", listen_port=0)
     ctrl = protocol.ctx.ctrl(
         id=1,
         name="sim",
@@ -110,6 +111,7 @@ async def test_simulate_response_latency_live():
         host="127.0.0.1",
         port=port,
         mac=mac,
+        unicast=True,
     )
     protocol.set_controllers([ctrl])
     try:
@@ -604,7 +606,7 @@ async def test_multicast_event_receipt():
     port = sim._transport.get_extra_info("sockname")[1]
     mac = ":".join(f"{b:02x}" for b in world.mac)
 
-    protocol = ZenTestClient(unicast=False)
+    protocol = ZenTestClient()
     ctrl = protocol.ctx.ctrl(
         id=1,
         name="sim",
