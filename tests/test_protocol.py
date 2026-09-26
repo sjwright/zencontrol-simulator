@@ -352,18 +352,21 @@ def test_xy_colour_roundtrip(dispatcher, monkeypatch):
     assert (resp[4] << 8) | resp[5] == 12345
 
 
-def test_startup_no_answer_and_dali_always_ready(dispatcher):
-    # PDF: startup incomplete → NO_ANSWER. Simulator has no DALI fault → always OK.
+def test_startup_no_answer_and_dali_not_ready_error(dispatcher):
+    # PDF: startup incomplete → NO_ANSWER; DALI not ready → an error reply.
     disp, world, _ = dispatcher
     world.startup_complete = False
     req = parse_request(_basic(CMD["QUERY_CONTROLLER_STARTUP_COMPLETE"]))
     assert not isinstance(req, ParseFailure)
     assert disp.handle(req)[0] == ResponseType.NO_ANSWER
 
-    world.dali_ready = False  # YAML flag ignored - bus is always ready
     req2 = parse_request(_basic(CMD["QUERY_IS_DALI_READY"]))
     assert not isinstance(req2, ParseFailure)
     assert disp.handle(req2)[0] == ResponseType.OK
+    world.dali_ready = False
+    resp = disp.handle(req2)
+    assert resp[0] == ResponseType.ERROR
+    assert resp[3] == ErrorCode.SHORT_CIRCUIT
 
 
 def test_xy_features_bit(dispatcher):

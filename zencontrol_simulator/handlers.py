@@ -237,8 +237,11 @@ class CommandDispatcher:
             CMD["QUERY_CONTROLLER_STARTUP_COMPLETE"],
             lambda r: _ok(r.seq) if w.is_startup_complete() else _no_answer(r.seq),
         )
-        # No DALI bus fault model - always ready.
-        self._reg(CMD["QUERY_IS_DALI_READY"], lambda r: _ok(r.seq))
+        # PDF: REPLY_OK if DALI is ready, otherwise an error (DALI line fault).
+        self._reg(
+            CMD["QUERY_IS_DALI_READY"],
+            lambda r: _ok(r.seq) if w.dali_ready else _error(r.seq, ErrorCode.SHORT_CIRCUIT),
+        )
         # Operating mode: always default 0 (no manufacturer modes modelled)
         self._reg(CMD["QUERY_OPERATING_MODE_BY_ADDRESS"], self._query_operating_mode)
         # Button LED: static stubs (no physical LED model)
@@ -507,8 +510,8 @@ class CommandDispatcher:
         if not members:
             return _no_answer(request.seq)
         level = max(m.visible_level() for m in members)
-        # Occupancy byte is stubbed True (no GROUP_OCCUPANCY model yet).
-        return _answer(request.seq, bytes([group_num & 0xFF, 0x01, level & 0xFF]))
+        occupied = 0x01 if group.is_occupied() else 0x00
+        return _answer(request.seq, bytes([group_num & 0xFF, occupied, level & 0xFF]))
 
     def _query_group_label(self, request: Request) -> bytes:
         group = self.world.group(self._addr(request))

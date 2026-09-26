@@ -104,8 +104,22 @@ def test_group_by_number_uses_visible_mid_fade(monkeypatch):
     assert not isinstance(req, ParseFailure)
     resp = disp.handle(req)
     assert resp[0] == ResponseType.ANSWER
-    assert resp[3] == 2 and resp[4] == 0x01
+    assert resp[3] == 2 and resp[4] == 0x00  # no occupancy event yet
     assert 45 <= resp[5] <= 55  # mid-fade brightest ≈ 50
+
+
+def test_group_by_number_reports_occupancy_after_motion():
+    """Motion on a sensor targeting group 0 makes QUERY_GROUP_BY_NUMBER report occupied."""
+    disp, world, events = _disp()
+    world.event_mode = 0  # no need to send events for this check
+    req = parse_request(_basic(CMD["QUERY_GROUP_BY_NUMBER"], address=0))
+    assert not isinstance(req, ParseFailure)
+    assert disp.handle(req)[4] == 0x00
+    events.occupancy(0, 2)  # ECD 0 instance 2: occupancy sensor, primary group 0
+    assert disp.handle(req)[4] == 0x01
+    world.groups[0].occupied_until = 0.0  # hold elapsed
+    world.expire_group_occupancy()
+    assert disp.handle(req)[4] == 0x00
 
 
 @pytest.mark.asyncio
@@ -115,7 +129,7 @@ async def test_live_group_by_number_hallway(live_protocol):
     live_protocol.world.lights[5].set_level(120)
     info = await p.query_group_by_number(live_protocol.group(2))
     assert info is not None
-    assert info.number == 2 and info.occupied is True and info.level == 120
+    assert info.number == 2 and info.occupied is False and info.level == 120
 
 
 # ---------------------------------------------------------------------------
@@ -433,5 +447,6 @@ async def test_live_readiness_stubs_toggle(live_protocol):
     live_protocol.world.startup_complete = False
     assert await p.query_controller_startup_complete(c) is not True
     live_protocol.world.startup_complete = True
-    live_protocol.world.dali_ready = False  # ignored - always OK
-    assert await p.query_is_dali_ready(c) is True
+    live_protocol.world.dali_ready = False
+    assert await p.query_is_dali_ready(c) is False  # ERROR reply = DALI fault
+    live_protocol.world.dali_ready = True

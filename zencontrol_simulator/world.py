@@ -795,7 +795,12 @@ class World:
         return []
 
     def apply_inhibit(self, wire: int, seconds: int) -> list[int]:
-        """Store inhibit duration; return affected wire targets."""
+        """Store inhibit duration; return affected wire targets.
+
+        DALI_INHIBIT stops sensors changing a target. The simulator has no
+        sensor-to-light automation, so nothing reads this state except
+        is_inhibited() (tests / inspection).
+        """
         seconds = max(0, min(65535, int(seconds)))
         targets: list[int] = []
         if wire == 255:

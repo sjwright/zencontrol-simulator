@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import socket
+import threading
 import time
 
 from .events import EventEmitter
@@ -396,7 +397,8 @@ class Simulator:
           stats
           quit
         """
-        loop = asyncio.get_running_loop()
+        lines: asyncio.Queue[str | None] = asyncio.Queue()
+        _start_stdin_reader(asyncio.get_running_loop(), lines)
         logger.info(
             "Interactive mode - type 'help' for inject commands "
             "(button / hold / occupy / absolute / level / scene / colour / "
@@ -405,10 +407,7 @@ class Simulator:
         while True:
             if self._stop is not None and self._stop.is_set():
                 return
-            try:
-                line = await loop.run_in_executor(None, sys_stdin_readline)
-            except (EOFError, asyncio.CancelledError):
-                return
+            line = await lines.get()
             if line is None:
                 if self._stop is not None:
                     self._stop.set()
@@ -480,8 +479,25 @@ class Simulator:
                 raise ValueError(f"Unknown command: {line!r} (try 'help')")
 
 
-def sys_stdin_readline() -> str | None:
-    try:
-        return input()
-    except EOFError:
-        return None
+def _start_stdin_reader(loop: asyncio.AbstractEventLoop, lines: asyncio.Queue[str | None]) -> None:
+    """Feed stdin lines (then None at EOF) into *lines* from a daemon thread.
+
+    input() cannot be interrupted, so it must not run in the loop's default
+    executor: asyncio.run() waits for that executor on shutdown, which made
+    Ctrl-C hang until Enter was pressed. A daemon thread is simply abandoned.
+    """
+
+    def run() -> None:
+        while True:
+            try:
+                line: str | None = input()
+            except EOFError:
+                line = None
+            try:
+                loop.call_soon_threadsafe(lines.put_nowait, line)
+            except RuntimeError:  # loop already closed
+                return
+            if line is None:
+                return
+
+    threading.Thread(target=run, name="zencontrol-stdin", daemon=True).start()

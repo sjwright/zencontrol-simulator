@@ -177,7 +177,7 @@ Status legend: **Simulated** = responds with some degree of correctness / simula
 | `0x23` | QUERY_DALI_INSTANCE_FITTING_NUMBER     | Simulated  | `{fitting}.{ecd+100}.{instance}` (e.g. `1.104.2`)         |
 | `0x24` | QUERY_CONTROLLER_LABEL                 | Simulated  | Default config → `"Simulator"`                            |
 | `0x25` | QUERY_CONTROLLER_FITTING_NUMBER        | Simulated  | From YAML `controller.fitting_number` (default `"1"`)     |
-| `0x26` | QUERY_IS_DALI_READY                    | Stub       | Always `OK` (no DALI bus fault model)                     |
+| `0x26` | QUERY_IS_DALI_READY                    | Stub       | `OK`, or `ERROR` (short circuit) when `dali_ready: false` |
 | `0x27` | QUERY_CONTROLLER_STARTUP_COMPLETE      | Simulated  | YAML flag; `-s N` delays complete for N seconds           |
 | `0x28` | QUERY_OPERATING_MODE_BY_ADDRESS        | Stub       | Always mode `0`; unknown → `0xB8`                         |
 | `0x29` | OVERRIDE_DALI_BUTTON_LED_STATE         | Stub       | Always `OK`; no LED model                                 |

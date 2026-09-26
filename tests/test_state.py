@@ -1078,7 +1078,7 @@ def test_query_group_by_number():
     assert not isinstance(req, ParseFailure)
     resp = disp.handle(req)
     assert resp[0] == ResponseType.ANSWER
-    assert resp[3:6] == bytes([0, 0x01, 90])  # group, occupied, max member
+    assert resp[3:6] == bytes([0, 0x00, 90])  # group, unoccupied, max member
 
     missing = parse_request(_basic(CMD["QUERY_GROUP_BY_NUMBER"], address=15))
     assert not isinstance(missing, ParseFailure)
@@ -1190,12 +1190,12 @@ def test_xy_colour_set_and_query():
     assert (resp[4] << 8) | resp[5] == 20000
 
 
-def test_startup_no_answer_dali_always_ready():
+def test_startup_no_answer_dali_not_ready_error():
     disp, world, _ = _disp()
     world.startup_complete = False
     assert disp.handle(parse_request(_basic(CMD["QUERY_CONTROLLER_STARTUP_COMPLETE"])))[0] == ResponseType.NO_ANSWER
-    world.dali_ready = False  # ignored
-    assert disp.handle(parse_request(_basic(CMD["QUERY_IS_DALI_READY"])))[0] == ResponseType.OK
+    world.dali_ready = False
+    assert disp.handle(parse_request(_basic(CMD["QUERY_IS_DALI_READY"])))[0] == ResponseType.ERROR
 
 
 def test_startup_delay_two_seconds_incomplete_then_complete(monkeypatch):

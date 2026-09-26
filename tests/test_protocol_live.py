@@ -164,7 +164,7 @@ async def test_discover_groups(live_protocol):
     live_protocol.world.lights[1].set_level(77)
     info = await p.query_group_by_number(live_protocol.group(0))
     assert info is not None
-    assert info.number == 0 and info.occupied is True and info.level == 77
+    assert info.number == 0 and info.occupied is False and info.level == 77
     assert await p.query_group_by_number(live_protocol.group(15)) is None
 
 
@@ -903,13 +903,13 @@ async def test_group_last_scene_and_status(live_protocol):
 
 
 @pytest.mark.asyncio
-async def test_startup_incomplete_and_dali_always_ready(live_protocol):
+async def test_startup_incomplete_and_dali_not_ready(live_protocol):
     p, c = live_protocol.protocol, live_protocol.ctrl
     live_protocol.world.startup_complete = False
     assert await p.query_controller_startup_complete(c) is not True
     live_protocol.world.startup_complete = True
-    live_protocol.world.dali_ready = False  # ignored - simulator has no bus fault
-    assert await p.query_is_dali_ready(c) is True
+    live_protocol.world.dali_ready = False
+    assert await p.query_is_dali_ready(c) is False  # ERROR reply = DALI fault
 
 
 @pytest.mark.asyncio
