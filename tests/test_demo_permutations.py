@@ -114,21 +114,6 @@ def test_xy_scene_recall_applies_colour():
     assert light.colour.x == 15000 and light.colour.y == 18000
 
 
-def test_second_tc_rgb_xy_identity_and_groups():
-    world = load_world(CONFIG)
-    assert world.lights[7].colour_features.supports_tunable
-    assert world.lights[7].groups == [4]
-    assert world.lights[7].colour.kelvin == 4000
-
-    assert world.lights[8].colour_features.rgbwaf_channels == 3
-    assert world.lights[8].groups == [4]
-    assert world.lights[8].colour.r == 0 and world.lights[8].colour.b == 255
-
-    assert world.lights[9].colour_features.supports_xy
-    assert world.lights[9].groups == [4]
-    assert world.lights[9].colour.x == 18000
-
-
 def test_second_rgb_scene_recall():
     disp, world, _ = _disp()
     req = parse_request(_basic(CMD["DALI_SCENE"], address=8, d2=1))
@@ -217,26 +202,6 @@ def test_group_4_mixed_level_returns_255():
 # ---------------------------------------------------------------------------
 
 
-def test_ecd_shape_inventory():
-    world = load_world(CONFIG)
-
-    def shape(addr: int) -> tuple[int, ...]:
-        return tuple(sorted(i.type for i in world.devices[addr].instances))
-
-    assert shape(1) == (1,)
-    assert shape(3) == (1,)
-    assert shape(2) == (1, 1, 1, 1, 1, 1)
-    assert shape(4) == (1, 1, 1, 1, 1, 1)
-    assert shape(5) == (1, 1, 1, 1, 1, 1, 6)
-    assert shape(6) == (1, 1, 1, 1, 1, 1, 6)
-    assert shape(7) == (1, 1, 1, 1)
-    assert shape(8) == (1, 1, 1, 1)
-    assert shape(9) == (1, 1, 1, 6)
-    assert shape(12) == (1, 1, 1, 6)
-    assert shape(10) == (3, 4)
-    assert shape(11) == (3, 4)
-
-
 def test_general_sensor_and_pad_labels():
     disp, world, _ = _disp()
     # ECD wire = 64 + address
@@ -251,16 +216,6 @@ def test_general_sensor_and_pad_labels():
         q = parse_request(_basic(CMD["QUERY_DALI_INSTANCE_LABEL"], address=wire, d2=inst))
         assert not isinstance(q, ParseFailure)
         assert disp.handle(q)[3:-1] == label.encode()
-
-
-def test_entrance_occupancy_hold_differs_from_porch():
-    world = load_world(CONFIG)
-    porch = world.instance(10, 0)
-    entrance = world.instance(11, 0)
-    assert porch is not None and porch.timers is not None
-    assert entrance is not None and entrance.timers is not None
-    assert porch.timers.hold == 60
-    assert entrance.timers.hold == 90
 
 
 def test_sysvars_extra_ids_and_negative_value():

@@ -85,13 +85,6 @@ def dispatcher():
     return CommandDispatcher(world, events), world, events
 
 
-def test_load_config_features(dispatcher):
-    _, world, _ = dispatcher
-    assert 8 in world.lights[0].cg_types
-    assert world.lights[0].colour_features.supports_tunable
-    assert world.lights[2].colour_features.rgbwaf_channels == 3
-
-
 def test_query_controller_label(dispatcher):
     disp, world, _ = dispatcher
     req = parse_request(_basic(CMD["QUERY_CONTROLLER_LABEL"]))

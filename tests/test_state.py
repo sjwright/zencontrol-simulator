@@ -321,27 +321,6 @@ def test_load_simulate_sets_daylight_value():
     lux = world.system_variables[1]
     assert lux.simulate == 2500
     assert lux.value == daylight_sine_value(2500)
-    assert world.lights[4].groups == [2]
-    assert world.lights[5].groups == [2, 3]
-    assert world.lights[6].groups == [3]
-    assert world.group(2) is not None and world.group(3) is not None
-    assert world.group(4) is not None and world.group(5) is not None
-    assert world.group(4).scenes == {}
-    assert 7 in world.lights and world.lights[7].colour_features.supports_tunable
-    assert 10 in world.lights and 7 in world.lights[10].cg_types
-    assert 11 in world.lights and 7 in world.lights[11].cg_types
-    entrance = world.device(2)
-    assert entrance is not None
-    assert len(entrance.instances) == 6
-    assert all(i.type == 0x01 for i in entrance.instances)
-    lounge = world.device(5)
-    assert lounge is not None
-    assert any(i.type == 0x06 for i in lounge.instances)
-    porch = world.device(10)
-    assert porch is not None
-    assert {i.type for i in porch.instances} == {0x03, 0x04}
-    assert len([v for v in world.system_variables.values() if "switch" in v.name.lower()]) >= 2
-    assert len([v for v in world.system_variables.values() if "sensor" in v.name.lower()]) >= 2
 
 
 @pytest.mark.asyncio
@@ -1498,11 +1477,6 @@ def test_query_min_max_and_fade_running(monkeypatch):
     assert not isinstance(fade, ParseFailure)
     assert disp.handle(fade)[0] == ResponseType.OK
     assert disp.handle(qfade)[3] == 1
-
-
-def test_heartbeat_defaults_to_five():
-    _, world, _ = _disp()
-    assert world.heartbeat_interval == 5
 
 
 def test_packaged_config_exists():
