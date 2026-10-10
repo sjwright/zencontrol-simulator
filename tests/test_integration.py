@@ -155,13 +155,19 @@ async def test_zencontrol_python_discovery_and_control():
             assert await zen.commands.query_system_variable(ctrl, 0) == 42
             assert any(vid == 0 and val == 42 for vid, val in sysvar_events)
 
-            # Injected events reach library callbacks
+            # Injected events reach library callbacks. ECD 0 inst 2 is already
+            # occupied after interview (config: last_detect 12s, hold 60s), so
+            # this motion only refreshes the hold - motion_event fires on change.
+            motion = next(s for s in sensors if s.instance.address.number == 0 and s.instance.number == 2)
+            assert motion.occupied
+            detected_before = motion.last_detect
             sim.inject_button_press(0, 0)
             sim.inject_occupancy(0, 2, occupied=True)
             sim.inject_absolute_input(13, 0, 0x1234)
             await asyncio.sleep(0.4)
             assert len(button_events) >= 1
-            assert len(motion_events) >= 1
+            assert motion.occupied and motion.last_detect > detected_before
+            assert motion_events == []
             assert any(value == 0x1234 for _, value in absolute_events)
             assert absolute_events[0][0] is slider
             assert slider.value == 0x1234
